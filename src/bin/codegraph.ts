@@ -654,6 +654,9 @@ workspace
         members: manifest.members.map((member) => member.name),
         indexPath: getDatabasePath(root),
         stats: cg?.getStats() ?? null,
+        database: { healthy: initialized },
+        sync: { healthy: initialized, mode: 'member-partition' },
+        watcher: { healthy: initialized, mode: 'one-per-member', memberRoots: manifest.members.length },
       };
       cg?.close();
       if (options.json) console.log(JSON.stringify(output));
