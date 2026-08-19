@@ -97,6 +97,29 @@ npm i -g @colbymchenry/codegraph
 
 </details>
 
+#### Thomsen fork: rooted multi-directory workspaces
+
+Install this fork directly from GitHub when using Stepby rooted Worksets:
+
+```bash
+npm install -g github:Thomsen/codegraph
+```
+
+The fork adds a version 1 manifest at `<root>/.codegraph/workspace.json`. Source
+members may live anywhere and are indexed into one database using stable
+`<member-name>/<relative-path>` identities. Initialize and inspect that graph
+with structured output:
+
+```bash
+codegraph workspace init --root /path/to/workset-root --json
+codegraph workspace status --root /path/to/workset-root --json
+```
+
+Run agents and the MCP server from the Workset root to reopen the same graph
+without repeating the root flag. MCP discovery prefers an explicit server root,
+then one unambiguous client-advertised root, then upward discovery from its
+working directory.
+
 ### 2. Wire up your agent(s)
 
 In a **new terminal**, run the installer to connect CodeGraph to the agents you use:

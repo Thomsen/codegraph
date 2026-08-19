@@ -589,6 +589,73 @@ async function recordIndexTelemetry(
 // Commands
 // =============================================================================
 
+const workspace = program
+  .command('workspace')
+  .description('Manage a unified graph for a rooted multi-directory workspace');
+
+workspace
+  .command('init')
+  .description('Initialize and index the members in .codegraph/workspace.json')
+  .requiredOption('--root <path>', 'Workspace root containing .codegraph/workspace.json')
+  .option('--json', 'Output machine-readable JSON')
+  .action(async (options: { root: string; json?: boolean }) => {
+    const root = fs.realpathSync(path.resolve(options.root));
+    try {
+      const { default: CodeGraph, getDatabasePath, loadWorkspaceManifest, WORKSPACE_PROTOCOL_VERSION } = await loadCodeGraph();
+      const manifest = loadWorkspaceManifest(root);
+      const cg = await CodeGraph.initWorkspace(root);
+      const output = {
+        protocolVersion: WORKSPACE_PROTOCOL_VERSION,
+        initialized: true,
+        root,
+        workset: manifest.workset,
+        members: manifest.members.map((member) => member.name),
+        indexPath: getDatabasePath(root),
+        stats: cg.getStats(),
+      };
+      cg.close();
+      if (options.json) console.log(JSON.stringify(output));
+      else success(`Initialized CodeGraph workspace "${manifest.workset}" with ${manifest.members.length} member(s).`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (options.json) console.log(JSON.stringify({ protocolVersion: 1, initialized: false, root, error: message }));
+      else error(`Failed to initialize workspace: ${message}`);
+      process.exitCode = 1;
+    }
+  });
+
+workspace
+  .command('status')
+  .description('Report rooted workspace manifest and graph status')
+  .requiredOption('--root <path>', 'Workspace root containing .codegraph/workspace.json')
+  .option('--json', 'Output machine-readable JSON')
+  .action(async (options: { root: string; json?: boolean }) => {
+    const root = fs.realpathSync(path.resolve(options.root));
+    try {
+      const { default: CodeGraph, getDatabasePath, loadWorkspaceManifest, WORKSPACE_PROTOCOL_VERSION } = await loadCodeGraph();
+      const manifest = loadWorkspaceManifest(root);
+      const initialized = CodeGraph.isInitialized(root);
+      const cg = initialized ? CodeGraph.openSync(root) : null;
+      const output = {
+        protocolVersion: WORKSPACE_PROTOCOL_VERSION,
+        initialized,
+        root,
+        workset: manifest.workset,
+        members: manifest.members.map((member) => member.name),
+        indexPath: getDatabasePath(root),
+        stats: cg?.getStats() ?? null,
+      };
+      cg?.close();
+      if (options.json) console.log(JSON.stringify(output));
+      else console.log(`CodeGraph workspace "${manifest.workset}": ${initialized ? 'initialized' : 'not initialized'}`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (options.json) console.log(JSON.stringify({ protocolVersion: 1, initialized: false, root, error: message }));
+      else error(`Failed to read workspace status: ${message}`);
+      process.exitCode = 1;
+    }
+  });
+
 /**
  * codegraph init [path]
  */

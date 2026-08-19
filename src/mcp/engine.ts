@@ -13,7 +13,7 @@
 import * as os from 'os';
 import type CodeGraph from '../index';
 import { findNearestCodeGraphRoot } from '../directory';
-import { watchDisabledReason } from '../sync';
+import { watchDisabledReason, type WatchOptions } from '../sync';
 import { ToolHandler } from './tools';
 import { QueryPool, resolvePoolSize } from './query-pool';
 
@@ -251,7 +251,7 @@ export class MCPEngine {
       process.stderr.write(`[CodeGraph MCP] File watcher debounce: ${debounceMs}ms (CODEGRAPH_WATCH_DEBOUNCE_MS)\n`);
     }
 
-    const started = this.cg.watch({
+    const watchOptions: WatchOptions = {
       debounceMs,
       onSyncComplete: (result) => {
         if (result.filesChanged > 0) {
@@ -271,7 +271,10 @@ export class MCPEngine {
         // (`codegraph sync` / git sync hooks).
         process.stderr.write(`[CodeGraph MCP] File watcher degraded — ${reason}\n`);
       },
-    });
+    };
+    const started = this.cg.isWorkspace()
+      ? this.cg.watchWorkspace(watchOptions)
+      : this.cg.watch(watchOptions);
 
     this.watcherStarted = true;
     if (started) {
@@ -296,8 +299,7 @@ export class MCPEngine {
   private catchUpSync(): void {
     const cg = this.cg;
     if (!cg) return;
-    const p = cg
-      .sync()
+    const p = (cg.isWorkspace() ? cg.syncWorkspace() : cg.sync())
       .then((result) => {
         const changed = result.filesAdded + result.filesModified + result.filesRemoved;
         if (changed > 0) {

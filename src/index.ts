@@ -6,6 +6,8 @@
  */
 
 import * as path from 'path';
+import * as fs from 'fs';
+import * as os from 'os';
 import {
   Node,
   NodeKind,
@@ -25,6 +27,7 @@ import {
   FindRelevantContextOptions,
 } from './types';
 import { DatabaseConnection, getDatabasePath, removeDatabaseFiles } from './db';
+import { createWorkspaceResolution, loadWorkspaceManifest, writeWorkspaceManifest, WORKSPACE_MANIFEST_PATH, type WorkspaceManifest } from './workspace';
 import { WalCheckpointValve, resolveWalValveMb } from './db/wal-valve';
 import { QueryBuilder } from './db/queries';
 import {
@@ -48,7 +51,7 @@ import {
 } from './resolution';
 import { GraphTraverser, GraphQueryManager } from './graph';
 import { ContextBuilder, createContextBuilder } from './context';
-import { Mutex, FileLock } from './utils';
+import { Mutex, FileLock, normalizePath, validatePathWithinRoot } from './utils';
 import { FileWatcher, WatchOptions, PendingFile, LockUnavailableError } from './sync';
 import { EXTRACTION_VERSION } from './extraction/extraction-version';
 import { getCodeGraphDir } from './directory';
@@ -65,6 +68,7 @@ export * from './types';
 // facade. Exposed from the package entry so they no longer require deep imports
 // into dist/ (issue #354).
 export { getDatabasePath, DatabaseConnection } from './db';
+export * from './workspace';
 export { QueryBuilder } from './db/queries';
 export {
   getCodeGraphDir,
@@ -148,15 +152,18 @@ export class CodeGraph {
   private graphManager!: GraphQueryManager;
   private traverser!: GraphTraverser;
   private contextBuilder!: ContextBuilder;
+  private workspaceManifest: WorkspaceManifest | null = null;
 
   // Mutex for preventing concurrent indexing operations (in-process)
   private indexMutex = new Mutex();
+  private sourceRootMutex = new Mutex();
 
   // File lock for preventing concurrent writes across processes (CLI, MCP, git hooks)
   private fileLock: FileLock;
 
   // File watcher for auto-sync on file changes
   private watcher: FileWatcher | null = null;
+  private workspaceWatchers: Array<{ member: WorkspaceManifest['members'][number]; watcher: FileWatcher }> = [];
 
   private constructor(
     db: DatabaseConnection,
@@ -187,13 +194,24 @@ export class CodeGraph {
       // Best-effort: ranking still works without it.
     }
     this.orchestrator = new ExtractionOrchestrator(this.projectRoot, this.queries);
-    this.resolver = createResolver(this.projectRoot, this.queries);
+    const workspace = this.workspaceManifest ? createWorkspaceResolution(this.workspaceManifest) : null;
+    this.resolver = createResolver(
+      this.projectRoot,
+      this.queries,
+      workspace
+        ? {
+            resolveFilePath: workspace.resolveFilePath,
+            workspacePackages: workspace.workspacePackages,
+          }
+        : undefined
+    );
     this.graphManager = new GraphQueryManager(this.queries);
     this.traverser = new GraphTraverser(this.queries);
     this.contextBuilder = createContextBuilder(
       this.projectRoot,
       this.queries,
-      this.traverser
+      this.traverser,
+      workspace?.resolveFilePath
     );
   }
 
@@ -259,6 +277,10 @@ export class CodeGraph {
     const queries = new QueryBuilder(db.getDb());
 
     const instance = new CodeGraph(db, queries, resolvedRoot);
+    if (fs.existsSync(path.join(resolvedRoot, WORKSPACE_MANIFEST_PATH))) {
+      instance.workspaceManifest = loadWorkspaceManifest(resolvedRoot);
+      instance.wireLayers();
+    }
 
     // Run initial indexing if requested
     if (options.index) {
@@ -266,6 +288,32 @@ export class CodeGraph {
     }
 
     return instance;
+  }
+
+  /** Initialize and index every member declared by a rooted workspace manifest. */
+  static async initWorkspace(root: string): Promise<CodeGraph> {
+    const resolvedRoot = path.resolve(root);
+    const manifest = loadWorkspaceManifest(resolvedRoot);
+    const instance = await CodeGraph.init(resolvedRoot, { index: false });
+    instance.workspaceManifest = manifest;
+    instance.wireLayers();
+    try {
+      for (const member of manifest.members) {
+        const result = await instance.indexSourceRoot(member.path, member.name);
+        if (!result.success) {
+          throw new Error(`Failed to index CodeGraph workspace member "${member.name}"`);
+        }
+      }
+      const retryable = instance.queries.getRetryableFailedReferences(instance.queries.getAllNodeNames());
+      if (retryable.length > 0) {
+        instance.resolver.clearCaches();
+        await instance.resolver.resolveAndPersistListYielding(retryable);
+      }
+      return instance;
+    } catch (error) {
+      instance.close();
+      throw error;
+    }
   }
 
   /**
@@ -287,7 +335,12 @@ export class CodeGraph {
     const db = DatabaseConnection.initialize(dbPath);
     const queries = new QueryBuilder(db.getDb());
 
-    return new CodeGraph(db, queries, resolvedRoot);
+    const instance = new CodeGraph(db, queries, resolvedRoot);
+    if (fs.existsSync(path.join(resolvedRoot, WORKSPACE_MANIFEST_PATH))) {
+      instance.workspaceManifest = loadWorkspaceManifest(resolvedRoot);
+      instance.wireLayers();
+    }
+    return instance;
   }
 
   /**
@@ -318,6 +371,10 @@ export class CodeGraph {
     const queries = new QueryBuilder(db.getDb());
 
     const instance = new CodeGraph(db, queries, resolvedRoot);
+    if (fs.existsSync(path.join(resolvedRoot, WORKSPACE_MANIFEST_PATH))) {
+      instance.workspaceManifest = loadWorkspaceManifest(resolvedRoot);
+      instance.wireLayers();
+    }
 
     // Sync if requested
     if (options.sync) {
@@ -372,7 +429,12 @@ export class CodeGraph {
     const db = DatabaseConnection.initialize(dbPath);
     const queries = new QueryBuilder(db.getDb());
 
-    return new CodeGraph(db, queries, resolvedRoot);
+    const instance = new CodeGraph(db, queries, resolvedRoot);
+    if (fs.existsSync(path.join(resolvedRoot, WORKSPACE_MANIFEST_PATH))) {
+      instance.workspaceManifest = loadWorkspaceManifest(resolvedRoot);
+      instance.wireLayers();
+    }
+    return instance;
   }
 
   /**
@@ -422,6 +484,19 @@ export class CodeGraph {
    */
   getProjectRoot(): string {
     return this.projectRoot;
+  }
+
+  /** Whether this graph is backed by a rooted multi-member manifest. */
+  isWorkspace(): boolean {
+    return this.workspaceManifest !== null;
+  }
+
+  /** Resolve a logical indexed path to its physical source file. */
+  resolveFilePath(filePath: string): string | null {
+    if (this.workspaceManifest) {
+      return createWorkspaceResolution(this.workspaceManifest).resolveFilePath(filePath);
+    }
+    return validatePathWithinRoot(this.projectRoot, filePath);
   }
 
   // ===========================================================================
@@ -712,6 +787,160 @@ export class CodeGraph {
         this.fileLock.release();
       }
     });
+  }
+
+  /** Index one physical source root into this database under a stable logical prefix. */
+  async indexSourceRoot(
+    sourceRoot: string,
+    pathPrefix: string,
+    options: IndexOptions = {}
+  ): Promise<IndexResult> {
+    const original = this.orchestrator;
+    this.orchestrator = new ExtractionOrchestrator(fs.realpathSync(path.resolve(sourceRoot)), this.queries, pathPrefix);
+    try {
+      return await this.indexAll(options);
+    } finally {
+      this.orchestrator = original;
+    }
+  }
+
+  /** Sync one physical source root while preserving its logical workspace prefix. */
+  async syncSourceRoot(
+    sourceRoot: string,
+    pathPrefix: string,
+    options: IndexOptions = {}
+  ): Promise<SyncResult> {
+    return this.sourceRootMutex.withLock(async () => {
+      const original = this.orchestrator;
+      this.orchestrator = new ExtractionOrchestrator(fs.realpathSync(path.resolve(sourceRoot)), this.queries, pathPrefix);
+      try {
+        return await this.sync(options);
+      } finally {
+        this.orchestrator = original;
+      }
+    });
+  }
+
+  /** Incrementally reconcile every member of the loaded workspace manifest. */
+  async syncWorkspace(options: IndexOptions = {}): Promise<SyncResult> {
+    if (!this.workspaceManifest) {
+      throw new Error('CodeGraph was not opened as a workspace');
+    }
+
+    const startedAt = Date.now();
+    const combined: SyncResult = {
+      filesChecked: 0,
+      filesAdded: 0,
+      filesModified: 0,
+      filesRemoved: 0,
+      nodesUpdated: 0,
+      durationMs: 0,
+    };
+    const changedPaths = new Set<string>();
+    const definitionDelta = new Set<string>();
+
+    for (const member of this.workspaceManifest.members) {
+      const result = await this.syncSourceRoot(member.path, member.name, options);
+      combined.filesChecked += result.filesChecked;
+      combined.filesAdded += result.filesAdded;
+      combined.filesModified += result.filesModified;
+      combined.filesRemoved += result.filesRemoved;
+      combined.nodesUpdated += result.nodesUpdated;
+      for (const file of result.changedFilePaths ?? []) changedPaths.add(file);
+      for (const name of result.definitionDelta ?? []) definitionDelta.add(name);
+    }
+
+    combined.durationMs = Date.now() - startedAt;
+    if (changedPaths.size > 0) combined.changedFilePaths = [...changedPaths];
+    if (definitionDelta.size > 0) combined.definitionDelta = [...definitionDelta];
+    return combined;
+  }
+
+  /**
+   * Build a complete candidate graph, then swap it in as one member's path.
+   * Validation/indexing failures leave both the live database and manifest intact.
+   */
+  async replaceWorkspaceMember(memberName: string, nextPath: string): Promise<void> {
+    if (!this.workspaceManifest) {
+      throw new Error('CodeGraph was not opened as a workspace');
+    }
+    const current = this.workspaceManifest;
+    const memberIndex = current.members.findIndex((member) => member.name === memberName);
+    if (memberIndex < 0) throw new Error(`Unknown CodeGraph workspace member: ${memberName}`);
+
+    const canonicalNextPath = fs.realpathSync(path.resolve(nextPath));
+    if (!fs.statSync(canonicalNextPath).isDirectory()) {
+      throw new Error(`CodeGraph workspace member is not a directory: ${nextPath}`);
+    }
+    if (current.members.some((member, index) => index !== memberIndex && member.path === canonicalNextPath)) {
+      throw new Error(`Duplicate CodeGraph workspace member path: ${canonicalNextPath}`);
+    }
+
+    const candidateManifest: WorkspaceManifest = {
+      ...current,
+      members: current.members.map((member, index) =>
+        index === memberIndex ? { name: member.name, path: canonicalNextPath } : member
+      ),
+    };
+    const stagingRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'codegraph-workspace-replace-'));
+    const oldManifestText = fs.readFileSync(path.join(this.projectRoot, '.codegraph', 'workspace.json'), 'utf-8');
+
+    try {
+      writeWorkspaceManifest(stagingRoot, candidateManifest);
+      const candidate = await CodeGraph.initWorkspace(stagingRoot);
+      candidate.close();
+
+      this.unwatch();
+      await this.sourceRootMutex.withLock(async () => this.indexMutex.withLock(async () => {
+        this.fileLock.acquire();
+        const liveDbPath = getDatabasePath(this.projectRoot);
+        const stagedDbPath = getDatabasePath(stagingRoot);
+        const backupSuffix = `.workspace-backup.${process.pid}.${Date.now()}`;
+        const liveFiles = [liveDbPath, `${liveDbPath}-wal`, `${liveDbPath}-shm`];
+        const backups: Array<{ live: string; backup: string }> = [];
+        let manifestReplaced = false;
+
+        try {
+          this.db.close();
+          for (const live of liveFiles) {
+            if (!fs.existsSync(live)) continue;
+            const backup = `${live}${backupSuffix}`;
+            fs.renameSync(live, backup);
+            backups.push({ live, backup });
+          }
+          fs.renameSync(stagedDbPath, liveDbPath);
+          writeWorkspaceManifest(this.projectRoot, candidateManifest);
+          manifestReplaced = true;
+
+          this.db = DatabaseConnection.open(liveDbPath);
+          this.queries = new QueryBuilder(this.db.getDb());
+          this.workspaceManifest = candidateManifest;
+          this.wireLayers();
+          for (const { backup } of backups) fs.rmSync(backup, { force: true });
+        } catch (error) {
+          try { this.db.close(); } catch { /* it may already be closed */ }
+          for (const live of liveFiles) fs.rmSync(live, { force: true });
+          for (const { live, backup } of backups) {
+            if (fs.existsSync(backup)) fs.renameSync(backup, live);
+          }
+          if (manifestReplaced) {
+            const manifestPath = path.join(this.projectRoot, '.codegraph', 'workspace.json');
+            const temporaryPath = `${manifestPath}.rollback.${process.pid}`;
+            fs.writeFileSync(temporaryPath, oldManifestText, 'utf-8');
+            fs.renameSync(temporaryPath, manifestPath);
+          }
+          this.db = DatabaseConnection.open(liveDbPath);
+          this.queries = new QueryBuilder(this.db.getDb());
+          this.workspaceManifest = current;
+          this.wireLayers();
+          throw error;
+        } finally {
+          this.fileLock.release();
+        }
+      }));
+    } finally {
+      fs.rmSync(stagingRoot, { recursive: true, force: true });
+    }
   }
 
   /**
@@ -1035,6 +1264,43 @@ export class CodeGraph {
     return this.watcher.start();
   }
 
+  /** Start one watcher per physical workspace member. */
+  watchWorkspace(options: WatchOptions = {}): boolean {
+    if (!this.workspaceManifest) {
+      throw new Error('CodeGraph was not opened as a workspace');
+    }
+    if (this.workspaceWatchers.some(({ watcher }) => watcher.isActive())) return true;
+
+    this.workspaceWatchers = this.workspaceManifest.members.map((member) => ({
+      member,
+      watcher: new FileWatcher(
+        member.path,
+        async (paths?: string[]) => {
+          const result = await this.syncSourceRoot(member.path, member.name, { paths });
+          if (result.filesChecked === 0 && result.durationMs === 0) {
+            throw new LockUnavailableError();
+          }
+          return {
+            filesChanged: result.filesAdded + result.filesModified + result.filesRemoved,
+            durationMs: result.durationMs,
+          };
+        },
+        options
+      ),
+    }));
+
+    const started: FileWatcher[] = [];
+    for (const { watcher } of this.workspaceWatchers) {
+      if (!watcher.start()) {
+        for (const active of started) active.stop();
+        this.workspaceWatchers = [];
+        return false;
+      }
+      started.push(watcher);
+    }
+    return true;
+  }
+
   /**
    * Stop watching for file changes.
    */
@@ -1043,13 +1309,15 @@ export class CodeGraph {
       this.watcher.stop();
       this.watcher = null;
     }
+    for (const { watcher } of this.workspaceWatchers) watcher.stop();
+    this.workspaceWatchers = [];
   }
 
   /**
    * Check if the file watcher is active.
    */
   isWatching(): boolean {
-    return this.watcher?.isActive() ?? false;
+    return (this.watcher?.isActive() ?? false) || this.workspaceWatchers.some(({ watcher }) => watcher.isActive());
   }
 
   /**
@@ -1061,12 +1329,14 @@ export class CodeGraph {
    * `getPendingFiles()` goes empty once watching stops (#876).
    */
   isWatcherDegraded(): boolean {
-    return this.watcher?.isDegraded() ?? false;
+    return (this.watcher?.isDegraded() ?? false) || this.workspaceWatchers.some(({ watcher }) => watcher.isDegraded());
   }
 
   /** The reason live watching degraded, or null if it is healthy (#876). */
   getWatcherDegradedReason(): string | null {
-    return this.watcher?.getDegradedReason() ?? null;
+    return this.watcher?.getDegradedReason()
+      ?? this.workspaceWatchers.map(({ watcher }) => watcher.getDegradedReason()).find((reason) => reason !== null)
+      ?? null;
   }
 
   /**
@@ -1082,7 +1352,14 @@ export class CodeGraph {
    * absorb that file.
    */
   getPendingFiles(): PendingFile[] {
-    return this.watcher?.getPendingFiles() ?? [];
+    const projectPending = this.watcher?.getPendingFiles() ?? [];
+    const workspacePending = this.workspaceWatchers.flatMap(({ member, watcher }) =>
+      watcher.getPendingFiles().map((pending) => ({
+        ...pending,
+        path: normalizePath(path.join(member.name, pending.path)),
+      }))
+    );
+    return [...projectPending, ...workspacePending];
   }
 
   /**
@@ -1091,7 +1368,11 @@ export class CodeGraph {
    * `getPendingFiles()`. Resolves immediately when no watcher is active.
    */
   waitUntilWatcherReady(timeoutMs?: number): Promise<void> {
-    return this.watcher ? this.watcher.waitUntilReady(timeoutMs) : Promise.resolve();
+    const waits = [
+      ...(this.watcher ? [this.watcher.waitUntilReady(timeoutMs)] : []),
+      ...this.workspaceWatchers.map(({ watcher }) => watcher.waitUntilReady(timeoutMs)),
+    ];
+    return waits.length > 0 ? Promise.all(waits).then(() => undefined) : Promise.resolve();
   }
 
   /**

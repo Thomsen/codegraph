@@ -22,6 +22,7 @@ import { findNearestCodeGraphRoot } from '../directory';
 import { getTelemetry, ClientInfo } from '../telemetry';
 import { getUpdateNotice } from '../upgrade/update-check';
 import { ExploreSessionState } from './explore-session-state';
+import { discoverCodeGraphRoot, WorkspaceRootAmbiguityError, WORKSPACE_PROTOCOL_VERSION } from '../workspace';
 
 /**
  * MCP Server Info — kept on the session because some clients log it. The
@@ -81,14 +82,15 @@ function fileUriToPath(uri: string): string {
   }
 }
 
-/** First usable filesystem path from a `roots/list` result, or null. */
-function firstRootPath(result: unknown): string | null {
-  if (!result || typeof result !== 'object') return null;
+/** Usable filesystem paths from a `roots/list` result. */
+function rootPaths(result: unknown): string[] {
+  if (!result || typeof result !== 'object') return [];
   const roots = (result as { roots?: unknown }).roots;
-  if (!Array.isArray(roots) || roots.length === 0) return null;
-  const first = roots[0] as { uri?: unknown };
-  if (typeof first?.uri !== 'string') return null;
-  return fileUriToPath(first.uri);
+  if (!Array.isArray(roots)) return [];
+  return roots.flatMap((root) => {
+    const uri = (root as { uri?: unknown })?.uri;
+    return typeof uri === 'string' ? [fileUriToPath(uri)] : [];
+  });
 }
 
 export interface MCPSessionOptions {
@@ -110,6 +112,7 @@ export class MCPSession {
   private clientInfo: ClientInfo | undefined;
   private rootsAttempted = false;
   private resolvePromise: Promise<void> | null = null;
+  private rootDiscoveryError: WorkspaceRootAmbiguityError | null = null;
   private explicitProjectPath: string | null;
   /**
    * What `codegraph_explore` has already returned to THIS client, per project
@@ -217,17 +220,27 @@ export class MCPSession {
       };
     }
 
-    // Explicit project signal, strongest first: client-provided rootUri /
-    // workspaceFolders (LSP-style), else the --path the server was launched
-    // with. cwd is NOT used here — we defer it so a roots/list answer can
-    // win over it. See issue #196.
+    // Root precedence: the server's explicit --path, one unambiguous
+    // client-advertised rootUri/workspaceFolder, then upward discovery from
+    // cwd. A roots-capable client can still provide its roots lazily below.
+    const advertisedRoots = [
+      ...(params?.rootUri ? [fileUriToPath(params.rootUri)] : []),
+      ...(params?.workspaceFolders ?? []).map((folder) => fileUriToPath(folder.uri)),
+    ];
     let explicitPath: string | null = null;
-    if (params?.rootUri) {
-      explicitPath = fileUriToPath(params.rootUri);
-    } else if (params?.workspaceFolders?.[0]?.uri) {
-      explicitPath = fileUriToPath(params.workspaceFolders[0].uri);
-    } else if (this.explicitProjectPath) {
-      explicitPath = this.explicitProjectPath;
+    try {
+      explicitPath = discoverCodeGraphRoot({
+        explicitRoot: this.explicitProjectPath,
+        advertisedRoots,
+        cwd: process.cwd(),
+      });
+    } catch (error) {
+      if (error instanceof WorkspaceRootAmbiguityError) {
+        this.rootDiscoveryError = error;
+        process.stderr.write(`[CodeGraph MCP] ${error.message}\n`);
+      } else {
+        throw error;
+      }
     }
 
     // Pick the instructions variant by the root's index state — a cheap
@@ -246,6 +259,7 @@ export class MCPSession {
     // Respond to the handshake BEFORE doing any heavy init — see issue #172.
     this.transport.sendResult(request.id, {
       protocolVersion: PROTOCOL_VERSION,
+      workspaceProtocolVersion: WORKSPACE_PROTOCOL_VERSION,
       capabilities: { tools: {} },
       serverInfo: SERVER_INFO,
       instructions: initializeInstructions(indexed ? SERVER_INSTRUCTIONS : SERVER_INSTRUCTIONS_NO_ROOT_INDEX),
@@ -260,7 +274,12 @@ export class MCPSession {
   }
 
   private async handleToolsList(request: JsonRpcRequest): Promise<void> {
-    await this.retryInitIfNeeded();
+    try {
+      await this.retryInitIfNeeded();
+    } catch (error) {
+      this.transport.sendError(request.id, ErrorCodes.InvalidParams, error instanceof Error ? error.message : String(error));
+      return;
+    }
     // Always expose the tools — even when the server root has no index. Gating
     // availability on whether `./` is indexed (the old behavior) breaks the
     // monorepo case where only sub-projects carry a `.codegraph/` (the agent
@@ -302,7 +321,12 @@ export class MCPSession {
     }
 
     if (process.env.CODEGRAPH_MCP_DEBUG) process.stderr.write(`[mcp-debug] toolsCall ${toolName} id=${String(request.id)} pre-init\n`);
-    await this.retryInitIfNeeded();
+    try {
+      await this.retryInitIfNeeded();
+    } catch (error) {
+      this.transport.sendError(request.id, ErrorCodes.InvalidParams, error instanceof Error ? error.message : String(error));
+      return;
+    }
 
     if (process.env.CODEGRAPH_MCP_DEBUG) process.stderr.write(`[mcp-debug] toolsCall ${toolName} id=${String(request.id)} dispatch\n`);
     const result = await this.engine.getToolHandler().execute(toolName, toolArgs, this.exploreSession);
@@ -322,8 +346,11 @@ export class MCPSession {
    *      that were `codegraph init`'d *after* the server started.
    */
   private async retryInitIfNeeded(): Promise<void> {
+    if (this.rootDiscoveryError) throw this.rootDiscoveryError;
     if (this.resolvePromise) {
-      try { await this.resolvePromise; } catch { /* fall through to retry */ }
+      try { await this.resolvePromise; } catch (error) {
+        if (error instanceof WorkspaceRootAmbiguityError) throw error;
+      }
       this.resolvePromise = null;
     }
 
@@ -335,7 +362,12 @@ export class MCPSession {
       this.resolvePromise = this.clientSupportsRoots
         ? this.initFromRoots()
         : this.engine.ensureInitialized(process.cwd());
-      try { await this.resolvePromise; } catch { /* fall through */ }
+      try { await this.resolvePromise; } catch (error) {
+        if (error instanceof WorkspaceRootAmbiguityError) {
+          this.rootDiscoveryError = error;
+          throw error;
+        }
+      }
       this.resolvePromise = null;
       if (this.engine.hasDefaultCodeGraph()) return;
     }
@@ -354,13 +386,17 @@ export class MCPSession {
     let target = process.cwd();
     try {
       const result = await this.transport.request('roots/list', undefined, ROOTS_LIST_TIMEOUT_MS);
-      const rootPath = firstRootPath(result);
-      if (rootPath) {
-        target = rootPath;
+      const discovered = discoverCodeGraphRoot({ advertisedRoots: rootPaths(result), cwd: process.cwd() });
+      if (discovered) {
+        target = discovered;
       } else {
         process.stderr.write('[CodeGraph MCP] Client returned no workspace roots; falling back to process cwd.\n');
       }
     } catch (err) {
+      if (err instanceof WorkspaceRootAmbiguityError) {
+        process.stderr.write(`[CodeGraph MCP] ${err.message}\n`);
+        throw err;
+      }
       const msg = err instanceof Error ? err.message : String(err);
       process.stderr.write(`[CodeGraph MCP] roots/list request failed (${msg}); falling back to process cwd.\n`);
     }

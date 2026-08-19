@@ -279,10 +279,13 @@ export class ReferenceResolver {
   private goModule: GoModule | null | undefined = undefined;
   // Monorepo workspace member packages. Same lazy/immutable convention.
   private workspacePackages: WorkspacePackages | null | undefined = undefined;
+  private resolveWorkspaceFile: ((filePath: string) => string | null) | undefined;
 
-  constructor(projectRoot: string, queries: QueryBuilder) {
+  constructor(projectRoot: string, queries: QueryBuilder, options: ReferenceResolverOptions = {}) {
     this.projectRoot = projectRoot;
     this.queries = queries;
+    this.resolveWorkspaceFile = options.resolveFilePath;
+    this.workspacePackages = options.workspacePackages;
 
     const limit = resolveCacheLimit();
     // The content cache is heavier (full file text), so we give it a
@@ -415,7 +418,13 @@ export class ReferenceResolver {
     if (this.fileCache.has(filePath)) {
       return this.fileCache.get(filePath)!;
     }
-    const fullPath = path.join(this.projectRoot, filePath);
+    const fullPath = this.resolveWorkspaceFile
+      ? this.resolveWorkspaceFile(filePath)
+      : path.join(this.projectRoot, filePath);
+    if (!fullPath) {
+      this.fileCache.set(filePath, null);
+      return null;
+    }
     try {
       const content = fs.readFileSync(fullPath, 'utf-8');
       this.fileCache.set(filePath, content);
@@ -539,7 +548,10 @@ export class ReferenceResolver {
           }
         }
         // Fall back to filesystem for files not yet indexed
-        const fullPath = path.join(this.projectRoot, filePath);
+        const fullPath = this.resolveWorkspaceFile
+          ? this.resolveWorkspaceFile(filePath)
+          : path.join(this.projectRoot, filePath);
+        if (!fullPath) return false;
         try {
           return fs.existsSync(fullPath);
         } catch (error) {
@@ -566,9 +578,12 @@ export class ReferenceResolver {
       },
 
       listDirectories: (relativePath: string) => {
-        const target = relativePath === '.' || relativePath === ''
-          ? this.projectRoot
-          : path.join(this.projectRoot, relativePath);
+        const target = this.resolveWorkspaceFile
+          ? this.resolveWorkspaceFile(relativePath)
+          : relativePath === '.' || relativePath === ''
+            ? this.projectRoot
+            : path.join(this.projectRoot, relativePath);
+        if (!target) return [];
         try {
           return fs
             .readdirSync(target, { withFileTypes: true })
@@ -2448,8 +2463,17 @@ export class ReferenceResolver {
 /**
  * Create a reference resolver instance
  */
-export function createResolver(projectRoot: string, queries: QueryBuilder): ReferenceResolver {
-  const resolver = new ReferenceResolver(projectRoot, queries);
+export interface ReferenceResolverOptions {
+  resolveFilePath?: (filePath: string) => string | null;
+  workspacePackages?: WorkspacePackages | null;
+}
+
+export function createResolver(
+  projectRoot: string,
+  queries: QueryBuilder,
+  options: ReferenceResolverOptions = {}
+): ReferenceResolver {
+  const resolver = new ReferenceResolver(projectRoot, queries, options);
   resolver.initialize();
   return resolver;
 }

@@ -1435,6 +1435,7 @@ function resurrectRefFromDroppedEdge(
 export class ExtractionOrchestrator {
   private rootDir: string;
   private queries: QueryBuilder;
+  private pathPrefix: string;
   /**
    * Names of frameworks detected for this project, populated by indexAll().
    * Passed to extractFromSource so framework-specific extractors (route nodes,
@@ -1443,9 +1444,20 @@ export class ExtractionOrchestrator {
    */
   private detectedFrameworkNames: string[] | null = null;
 
-  constructor(rootDir: string, queries: QueryBuilder) {
+  constructor(rootDir: string, queries: QueryBuilder, pathPrefix = '') {
     this.rootDir = rootDir;
     this.queries = queries;
+    this.pathPrefix = pathPrefix;
+  }
+
+  private indexedPath(sourcePath: string): string {
+    return this.pathPrefix ? normalizePath(path.join(this.pathPrefix, sourcePath)) : sourcePath;
+  }
+
+  private sourcePath(indexedPath: string): string {
+    if (!this.pathPrefix) return indexedPath;
+    const prefix = `${normalizePath(this.pathPrefix)}/`;
+    return indexedPath.startsWith(prefix) ? indexedPath.slice(prefix.length) : indexedPath;
   }
 
   /**
@@ -1689,8 +1701,9 @@ export class ExtractionOrchestrator {
      * in-process synchronously as the no-worker fallback. The language is resolved
      * here on the main thread, where the codegraph.json overrides are loaded.
      */
-    const parseFile = (filePath: string, content: string): Promise<ExtractionResult> => {
-      const language = detectLanguage(filePath, content, overrides);
+    const parseFile = (sourcePath: string, content: string): Promise<ExtractionResult> => {
+      const filePath = this.indexedPath(sourcePath);
+      const language = detectLanguage(sourcePath, content, overrides);
       if (!pool) return Promise.resolve(extractFromSource(filePath, content, language, frameworkNames));
       return pool.requestParse({ filePath, content, language, frameworkNames });
     };
@@ -1720,7 +1733,8 @@ export class ExtractionOrchestrator {
     // the #850 watchdog heartbeat on slow hardware.
     const commitYield = createYielder();
 
-    const storeResult = async (filePath: string, content: string, stats: fs.Stats, result: ExtractionResult): Promise<void> => {
+    const storeResult = async (sourcePath: string, content: string, stats: fs.Stats, result: ExtractionResult): Promise<void> => {
+      const filePath = this.indexedPath(sourcePath);
       processed++;
 
       // WAL hard-cap backstop: between files (never mid-transaction), pause
@@ -1738,7 +1752,7 @@ export class ExtractionOrchestrator {
       // in the same file order this chain dispatches them), else on the main
       // thread (SQLite connections are per-thread).
       if (nodeCount > 0 || result.errors.length === 0) {
-        const language = detectLanguage(filePath, content, overrides);
+        const language = detectLanguage(sourcePath, content, overrides);
         if (storeWriter) {
           if (result.kernelBuffers) {
             // Buffers go to the writer as-is; the worker decodes + finalizes.
@@ -1788,7 +1802,8 @@ export class ExtractionOrchestrator {
       onProgress?.({ phase: 'parsing', current: processed, total, currentFile: filePath });
     };
 
-    const recordParseFailure = (filePath: string, err: unknown): void => {
+    const recordParseFailure = (sourcePath: string, err: unknown): void => {
+      const filePath = this.indexedPath(sourcePath);
       processed++;
       filesErrored++;
       errors.push({
@@ -1896,11 +1911,11 @@ export class ExtractionOrchestrator {
           filesErrored++;
           errors.push({
             message: `Failed to read file: ${error instanceof Error ? error.message : String(error)}`,
-            filePath,
+            filePath: this.indexedPath(filePath),
             severity: 'error',
             code: 'read_error',
           });
-          onProgress?.({ phase: 'parsing', current: processed, total });
+          onProgress?.({ phase: 'parsing', current: processed, total, currentFile: this.indexedPath(filePath) });
           continue;
         }
 
@@ -1914,7 +1929,7 @@ export class ExtractionOrchestrator {
           filesSkipped++;
           errors.push({
             message: `File exceeds max size (${stats.size} > ${MAX_FILE_SIZE})`,
-            filePath,
+            filePath: this.indexedPath(filePath),
             severity: 'warning',
             code: 'size_exceeded',
           });
@@ -2006,11 +2021,12 @@ export class ExtractionOrchestrator {
 
       for (const errEntry of retryableErrors) {
         const filePath = errEntry.filePath!;
+        const sourcePath = this.sourcePath(filePath);
         if (signal?.aborted) break;
 
         let content: string;
         try {
-          const fullPath = validatePathWithinRoot(this.rootDir, filePath);
+          const fullPath = validatePathWithinRoot(this.rootDir, sourcePath);
           if (!fullPath) continue;
           content = await fsp.readFile(fullPath, 'utf-8');
         } catch {
@@ -2019,15 +2035,15 @@ export class ExtractionOrchestrator {
 
         let result: ExtractionResult;
         try {
-          result = await parseFile(filePath, content);
+          result = await parseFile(sourcePath, content);
         } catch {
           stillFailing.push(errEntry);
           continue;
         }
 
         if (result.nodes.length > 0 || result.errors.length === 0) {
-          const language = detectLanguage(filePath, content, overrides);
-          const stats = await fsp.stat(path.join(this.rootDir, filePath));
+          const language = detectLanguage(sourcePath, content, overrides);
+          const stats = await fsp.stat(path.join(this.rootDir, sourcePath));
           await this.storeExtractionResult(filePath, content, language, stats, result, commitYield);
 
           const idx = errors.indexOf(errEntry);
@@ -2050,11 +2066,12 @@ export class ExtractionOrchestrator {
 
         for (const errEntry of stillFailing) {
           const filePath = errEntry.filePath!;
+          const sourcePath = this.sourcePath(filePath);
           if (signal?.aborted) break;
 
           let fullContent: string;
           try {
-            const fullPath = validatePathWithinRoot(this.rootDir, filePath);
+            const fullPath = validatePathWithinRoot(this.rootDir, sourcePath);
             if (!fullPath) continue;
             fullContent = await fsp.readFile(fullPath, 'utf-8');
           } catch {
@@ -2070,14 +2087,14 @@ export class ExtractionOrchestrator {
 
           let result: ExtractionResult;
           try {
-            result = await parseFile(filePath, stripped);
+            result = await parseFile(sourcePath, stripped);
           } catch {
             continue;
           }
 
           if (result.nodes.length > 0 || result.errors.length === 0) {
-            const language = detectLanguage(filePath, fullContent, overrides);
-            const stats = await fsp.stat(path.join(this.rootDir, filePath));
+            const language = detectLanguage(sourcePath, fullContent, overrides);
+            const stats = await fsp.stat(path.join(this.rootDir, sourcePath));
             await this.storeExtractionResult(filePath, fullContent, language, stats, result, commitYield);
 
             const idx = errors.indexOf(errEntry);
@@ -2134,7 +2151,7 @@ export class ExtractionOrchestrator {
       } else if (result.errors.some((e) => e.severity === 'error')) {
         filesErrored++;
       } else {
-        const tracked = this.queries.getFileByPath(filePath);
+        const tracked = this.queries.getFileByPath(this.indexedPath(filePath));
         if (tracked && isFileLevelOnlyLanguage(tracked.language)) {
           filesIndexed++;
         } else {
@@ -2238,6 +2255,8 @@ export class ExtractionOrchestrator {
       };
     }
 
+    const indexedPath = this.indexedPath(relativePath);
+
     // Detect language (honoring the project's codegraph.json extension overrides)
     const language = detectLanguage(relativePath, content, loadExtensionOverrides(this.rootDir));
     if (!isLanguageSupported(language)) {
@@ -2254,11 +2273,11 @@ export class ExtractionOrchestrator {
     // otherwise detect on the spot so single-file re-index paths still emit
     // route nodes / middleware / etc.
     const frameworkNames = this.ensureDetectedFrameworks();
-    const result = extractFromSource(relativePath, content, language, frameworkNames);
+    const result = extractFromSource(indexedPath, content, language, frameworkNames);
 
     // Store in database
     if (result.nodes.length > 0 || result.errors.length === 0) {
-      await this.storeExtractionResult(relativePath, content, language, stats, result, createYielder());
+      await this.storeExtractionResult(indexedPath, content, language, stats, result, createYielder());
     }
 
     return result;
@@ -2626,7 +2645,7 @@ export class ExtractionOrchestrator {
       currentFiles = unique.filter((p) => fs.existsSync(path.join(this.rootDir, p)));
       trackedFiles = [];
       for (const p of unique) {
-        const rec = this.queries.getFileByPath(p);
+        const rec = this.queries.getFileByPath(this.indexedPath(p));
         if (rec) trackedFiles.push(rec);
       }
       filesChecked = unique.length;
@@ -2637,13 +2656,14 @@ export class ExtractionOrchestrator {
       filesChecked = currentFiles.length;
 
       const tTracked = Date.now();
-      trackedFiles = this.queries.getAllFiles();
+      const prefix = this.pathPrefix ? `${this.pathPrefix}/` : '';
+      trackedFiles = this.queries.getAllFiles().filter((file) => !prefix || file.path.startsWith(prefix));
       if (process.env.CODEGRAPH_SYNTH_TIMINGS) console.error(`[phase-timing] sync-tracked-load: ${Date.now() - tTracked}ms (${trackedFiles.length} tracked)`);
     }
     const currentSet = new Set(currentFiles);
     const trackedMap = new Map<string, FileRecord>();
     for (const f of trackedFiles) {
-      trackedMap.set(f.path, f);
+      trackedMap.set(this.sourcePath(f.path), f);
     }
 
     // Removals: tracked in the DB but no longer a present source file. Check the
@@ -2653,7 +2673,8 @@ export class ExtractionOrchestrator {
     // below (see SYNC_RECONCILE_YIELD_INTERVAL / issue #905).
     let reconcileChecks = 0;
     for (const tracked of trackedFiles) {
-      if (!currentSet.has(tracked.path) || !fs.existsSync(path.join(this.rootDir, tracked.path))) {
+      const sourcePath = this.sourcePath(tracked.path);
+      if (!currentSet.has(sourcePath) || !fs.existsSync(path.join(this.rootDir, sourcePath))) {
         // Before the cascade deletes them, resurrect incoming cross-file
         // resolution edges as their original refs (#1240 removal case): the
         // callers live in files this sync will NOT revisit, so this is their
@@ -2721,11 +2742,11 @@ export class ExtractionOrchestrator {
 
       if (!tracked) {
         filesToIndex.push(filePath);
-        changedFilePaths.push(filePath);
+        changedFilePaths.push(this.indexedPath(filePath));
         filesAdded++;
       } else if (tracked.contentHash !== contentHash) {
         filesToIndex.push(filePath);
-        changedFilePaths.push(filePath);
+        changedFilePaths.push(this.indexedPath(filePath));
         filesModified++;
       }
     }
@@ -2735,7 +2756,7 @@ export class ExtractionOrchestrator {
     // before inserting the new ones, so this is the last point the pre-edit
     // definition set is readable (CG-33).
     if (filesToIndex.length > 0) {
-      for (const pair of this.queries.getNodeNamePairsByFiles(filesToIndex)) pairsBefore.add(pair);
+      for (const pair of this.queries.getNodeNamePairsByFiles(filesToIndex.map((file) => this.indexedPath(file)))) pairsBefore.add(pair);
     }
 
     // Load only grammars needed for changed files
@@ -2757,7 +2778,7 @@ export class ExtractionOrchestrator {
         phase: 'parsing',
         current: i + 1,
         total,
-        currentFile: filePath,
+        currentFile: this.indexedPath(filePath),
       });
 
       const result = await this.indexFile(filePath);
@@ -2776,7 +2797,7 @@ export class ExtractionOrchestrator {
     // defined `collect` must still flag the name, and a bare name set cancels
     // exactly that case out. That miss left the largest residual class in the
     // first measurement of this fix.
-    const pairsAfter = this.queries.getNodeNamePairsByFiles(filesToIndex);
+    const pairsAfter = this.queries.getNodeNamePairsByFiles(filesToIndex.map((file) => this.indexedPath(file)));
     const deltaNames = new Set<string>();
     const nameOf = (pair: string) => pair.slice(pair.indexOf('\0') + 1);
     for (const pair of pairsBefore) if (!pairsAfter.has(pair)) deltaNames.add(nameOf(pair));

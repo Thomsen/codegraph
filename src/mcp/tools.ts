@@ -38,7 +38,7 @@ import {
   statSync,
 } from 'fs';
 import { createHash } from 'crypto';
-import { clamp, validatePathWithinRoot, validateProjectPath, isConfigLeafNode, CONFIG_LEAF_LANGUAGES } from '../utils';
+import { clamp, validateProjectPath, isConfigLeafNode, CONFIG_LEAF_LANGUAGES } from '../utils';
 import { scanDynamicDispatch } from './dynamic-boundaries';
 import { getUpdateNotice } from '../upgrade/update-check';
 import { ExploreDiagnostics } from './explore-diagnostics';
@@ -1779,7 +1779,7 @@ export class ToolHandler {
     let stale = false;
     try {
       const rec = cg.getFile(relPath);
-      const absPath = rec ? validatePathWithinRoot(root, relPath) : null;
+      const absPath = rec ? cg.resolveFilePath(relPath) : null;
       if (rec && absPath && existsSync(absPath)) {
         const st = statSync(absPath);
         // Same freshness test as the sync fast path (extraction/index.ts):
@@ -2818,8 +2818,6 @@ export class ToolHandler {
     const MAX_NOTES = 4;       // boundary bullets per explore
     const MAX_SCAN = 8;        // bodies scanned
     const MAX_TOTAL_CHARS = 200_000;
-    let projectRoot: string;
-    try { projectRoot = cg.getProjectRoot(); } catch { return ''; }
     const notes: string[] = [];
     const seenNode = new Set<string>();
     const seenSite = new Set<string>();
@@ -2828,7 +2826,7 @@ export class ToolHandler {
       if (notes.length >= MAX_NOTES || scanned >= MAX_SCAN || charsScanned > MAX_TOTAL_CHARS) break;
       if (seenNode.has(node.id) || !node.startLine || !node.endLine) continue;
       seenNode.add(node.id);
-      const absPath = validatePathWithinRoot(projectRoot, node.filePath);
+      const absPath = cg.resolveFilePath(node.filePath);
       if (!absPath || !existsSync(absPath)) continue;
       let content: string;
       try { content = readFileSync(absPath, 'utf-8'); } catch { continue; }
@@ -4363,7 +4361,7 @@ export class ToolHandler {
         headroom - owedPayableBelow(fileIndex, Math.max(0, headroom - reserved)),
       );
       diag?.recordFunded(filePath, fundedHeadroom);
-      const absPath = validatePathWithinRoot(projectRoot, filePath);
+      const absPath = cg.resolveFilePath(filePath);
       if (!absPath || !existsSync(absPath)) {
         diag?.recordSkip(filePath, 'unreadable');
         continue;
@@ -6060,7 +6058,7 @@ export class ToolHandler {
 
     // Read the current bytes from disk through the security chokepoint
     // (validatePathWithinRoot: blocks `../` traversal and symlink escapes, #527).
-    const abs = validatePathWithinRoot(cg.getProjectRoot(), filePath);
+    const abs = cg.resolveFilePath(filePath);
     let content: string | null = null;
     if (abs) {
       try { content = readFileSync(abs, 'utf-8'); } catch { content = null; }
@@ -6173,7 +6171,7 @@ export class ToolHandler {
     let embedded = false;
     if (includeCode) {
       try {
-        const absPath = validatePathWithinRoot(cg.getProjectRoot(), node.filePath);
+        const absPath = cg.resolveFilePath(node.filePath);
         if (absPath && existsSync(absPath) && !isConfigLeafNode(node)) {
           const content = readFileSync(absPath, 'utf-8');
           const body = content.replace(/\n+$/, '');
