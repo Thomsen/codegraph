@@ -666,6 +666,31 @@ workspace
     }
   });
 
+workspace
+  .command('replace <member> <path>')
+  .description('Replace one rooted workspace member and its graph partition')
+  .requiredOption('--root <path>', 'Workspace root containing .codegraph/workspace.json')
+  .option('--json', 'Output machine-readable JSON')
+  .action(async (member: string, nextPath: string, options: { root: string; json?: boolean }) => {
+    const root = fs.realpathSync(path.resolve(options.root));
+    try {
+      const { default: CodeGraph, loadWorkspaceManifest, WORKSPACE_PROTOCOL_VERSION } = await loadCodeGraph();
+      const cg = await CodeGraph.open(root);
+      await cg.replaceWorkspaceMember(member, nextPath);
+      const manifest = loadWorkspaceManifest(root);
+      const replaced = manifest.members.find((candidate) => candidate.name === member);
+      cg.close();
+      const output = { protocolVersion: WORKSPACE_PROTOCOL_VERSION, replaced: true, root, member, path: replaced?.path };
+      if (options.json) console.log(JSON.stringify(output));
+      else success(`Replaced CodeGraph workspace member "${member}" with ${replaced?.path}.`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (options.json) console.log(JSON.stringify({ protocolVersion: 1, replaced: false, root, member, error: message }));
+      else error(`Failed to replace workspace member: ${message}`);
+      process.exitCode = 1;
+    }
+  });
+
 /**
  * codegraph init [path]
  */
