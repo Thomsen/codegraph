@@ -594,6 +594,16 @@ const workspace = program
   .description('Manage a unified graph for a rooted multi-directory workspace');
 
 workspace
+  .command('protocol')
+  .description('Report the rooted workspace protocol supported by this binary')
+  .option('--json', 'Output machine-readable JSON')
+  .action((options: { json?: boolean }) => {
+    const output = { protocolVersion: 1 };
+    if (options.json) console.log(JSON.stringify(output));
+    else console.log(`CodeGraph workspace protocol version ${output.protocolVersion}`);
+  });
+
+workspace
   .command('init')
   .description('Initialize and index the members in .codegraph/workspace.json')
   .requiredOption('--root <path>', 'Workspace root containing .codegraph/workspace.json')

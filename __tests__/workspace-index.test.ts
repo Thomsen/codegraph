@@ -94,6 +94,8 @@ describe('multi-root workspace indexing', () => {
       return JSON.parse(stdout.trim());
     };
 
+    expect(run('workspace', 'protocol', '--json')).toEqual({ protocolVersion: 1 });
+
     expect(run('workspace', 'init', '--root', root, '--json')).toMatchObject({
       protocolVersion: 1,
       initialized: true,
