@@ -22,7 +22,7 @@ command -v claude >/dev/null || { echo "claude CLI not on PATH"; exit 1; }
 cleanup(){ pkill -9 -f "serve --mcp --path $OUT/" 2>/dev/null; }
 trap cleanup EXIT
 mkdir -p "$OUT"
-( cd "$ENGINE" && npm run build >/dev/null 2>&1 ) && echo "built engine"
+( cd "$ENGINE" && npm run compile >/dev/null 2>&1 ) && echo "built engine"
 echo "###### repo=$REPO  runs/arm=$RUNS"
 echo "###### task=$Q"; echo
 echo '{"mcpServers":{}}' > "$OUT/mcp-empty.json"

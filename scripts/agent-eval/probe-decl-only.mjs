@@ -30,7 +30,7 @@
  *                 two declaration files differ in NOTHING the ranker can see;
  *                 the delta against `both` is exactly what CG-25 buys
  *
- * Usage (needs a current `npm run build`):
+ * Usage (needs a current `npm run compile`):
  *   node scripts/agent-eval/probe-decl-only.mjs
  *   node scripts/agent-eval/probe-decl-only.mjs --variant strip-banner
  *   node scripts/agent-eval/probe-decl-only.mjs --json
@@ -74,7 +74,7 @@ const num = (n) => Math.round(n).toLocaleString('en-US');
 const pct = (f) => `${(f * 100).toFixed(1)}%`;
 
 if (!existsSync(join(REPO_ROOT, 'dist/index.js'))) {
-  console.error('dist/ not built — run `npm run build` first.');
+  console.error('dist/ not built — run `npm run compile` first.');
   process.exit(2);
 }
 const load = (rel) => import(pathToFileURL(resolve(REPO_ROOT, rel)).href);

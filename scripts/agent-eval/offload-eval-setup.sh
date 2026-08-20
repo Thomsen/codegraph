@@ -9,7 +9,7 @@ BIN="$ENGINE/dist/bin/codegraph.js"
 OUT="${AGENT_EVAL_OUT:-/tmp/cg-offload-eval}"
 ROOT="$OUT/repos"; mkdir -p "$ROOT"
 export CODEGRAPH_TELEMETRY=0 DO_NOT_TRACK=1
-[ -f "$BIN" ] || { echo "engine not built: run 'npm run build' in $ENGINE first"; exit 1; }
+[ -f "$BIN" ] || { echo "engine not built: run 'npm run compile' in $ENGINE first"; exit 1; }
 
 clone_index() { # url name
   echo "=== $2: clone ==="; rm -rf "$ROOT/$2"

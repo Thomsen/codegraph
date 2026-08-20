@@ -13,7 +13,7 @@
  * Prints, for the factory file: every line range the response delivered, and for
  * each inner function whether its DEFINITION LINE is inside one of them.
  *
- * Usage (needs a current `npm run build`):
+ * Usage (needs a current `npm run compile`):
  *   node scripts/agent-eval/probe-factory-closure.mjs
  *   node scripts/agent-eval/probe-factory-closure.mjs --json
  *   node scripts/agent-eval/probe-factory-closure.mjs --query "..."
@@ -43,7 +43,7 @@ const num = (n) => Math.round(n).toLocaleString('en-US');
 
 const load = (rel) => import(pathToFileURL(resolve(REPO_ROOT, rel)).href);
 if (!existsSync(join(REPO_ROOT, 'dist/index.js'))) {
-  console.error('dist/ not built — run `npm run build` first.');
+  console.error('dist/ not built — run `npm run compile` first.');
   process.exit(2);
 }
 const idxMod = await load('dist/index.js');

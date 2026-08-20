@@ -4,7 +4,7 @@
 #   with/without retrieval A/B (reuses scripts/agent-eval/run-all.sh).
 #
 # Assumes the codegraph dev build is already built + linked on PATH — the skill
-# runs `npm run build && ./scripts/local-install.sh` ONCE before looping repos.
+# runs `npm run compile && ./scripts/local-install.sh` ONCE before looping repos.
 # The A/B is skipped if extraction fails its critical checks (don't burn $ on a
 # broken extractor); set FORCE_AB=1 to run it anyway.
 #

@@ -19,7 +19,7 @@
  * repo's live index and therefore moves as the repo changes; its assertions are
  * relative for that reason.
  *
- * Usage (needs a current `npm run build`):
+ * Usage (needs a current `npm run compile`):
  *   node scripts/agent-eval/probe-allocation.mjs                 # every fixture
  *   node scripts/agent-eval/probe-allocation.mjs payroll-go      # one fixture
  *   node scripts/agent-eval/probe-allocation.mjs --json          # machine-readable
@@ -54,7 +54,7 @@ const num = (n) => Math.round(n).toLocaleString('en-US');
 async function loadDist() {
   const distIndex = join(REPO_ROOT, 'dist/index.js');
   if (!existsSync(distIndex)) {
-    console.error('dist/ not built — run `npm run build` first.');
+    console.error('dist/ not built — run `npm run compile` first.');
     process.exit(2);
   }
   const idx = await import(pathToFileURL(distIndex).href);

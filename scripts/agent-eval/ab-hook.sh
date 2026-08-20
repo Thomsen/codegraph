@@ -43,7 +43,7 @@ echo "###### target=$TARGET   runs/arm=$RUNS"
 echo "###### task=$TASK"
 echo
 
-( cd "$ENGINE" && npm run build >/dev/null 2>&1 ) && echo "built"
+( cd "$ENGINE" && npm run compile >/dev/null 2>&1 ) && echo "built"
 
 # A settings file carrying ONLY the PreToolUse(Read) redirect hook.
 HOOK_SETTINGS="$OUT/hook-settings.json"

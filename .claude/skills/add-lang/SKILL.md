@@ -127,7 +127,7 @@ is a *call*) are handled in the extractor's `visitNode` hook instead.
 ### Step 5 — Build + verify loop
 
 ```bash
-npm run build            # tsc + copy-assets (copies any vendored *.wasm into dist/)
+npm run compile            # tsc + copy-assets (copies any vendored *.wasm into dist/)
 ```
 Index a small sample repo and check extraction:
 ```bash
@@ -137,7 +137,7 @@ node scripts/add-lang/verify-extraction.mjs <sample-repo> <lang>
 `verify-extraction.mjs` fails (exit 1) if the language isn't detected or only
 `file`/`import` nodes were produced — the classic symptom of wrong node-type
 names. On FAIL or a thin WARN: re-run `dump-ast.mjs` on a richer file, fix the
-mappings in `<lang>.ts`, `npm run build`, re-index, re-verify. **Repeat until
+mappings in `<lang>.ts`, `npm run compile`, re-index, re-verify. **Repeat until
 PASS.**
 
 ### Step 6 — Tests
@@ -170,7 +170,7 @@ needs tracing across files). Add a `"<Language>"` block to
 
 Make the dev build the codegraph on PATH **once**, then loop:
 ```bash
-npm run build && ./scripts/local-install.sh
+npm run compile && ./scripts/local-install.sh
 scripts/add-lang/bench.sh <lang> <name> <url> "<question>" headless   # ×3
 ```
 `bench.sh` clones (shared `/tmp/codegraph-corpus`), wipes + indexes, runs
@@ -212,7 +212,7 @@ releases go through the GitHub Actions Release workflow.
   2 arms × 3 repos. The corpus dir `/tmp/codegraph-corpus` is shared with
   `/agent-eval`, so clones are reused across runs.
 - Any new `*.wasm` must live in `src/extraction/wasm/` — `copy-assets` (run by
-  `npm run build`) ships it; otherwise it won't be in `dist/`.
+  `npm run compile`) ships it; otherwise it won't be in `dist/`.
 - An index must be served by the **same** binary that built it. Step 8 builds +
   links the dev build first, so this holds.
 - If a grammar can't be obtained, or extraction can't reach PASS, **STOP and

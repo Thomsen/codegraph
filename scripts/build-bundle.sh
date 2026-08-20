@@ -57,7 +57,7 @@ fi
 
 # 2. Build the app (compiled JS + copied wasm/schema assets).
 echo "[bundle] building app"
-( cd "$ROOT" && npm run build >/dev/null )
+( cd "$ROOT" && npm run compile >/dev/null )
 
 # 3. Stage: app + production-only deps (pure JS/wasm → portable across platforms).
 STAGE="$WORK/codegraph-${TARGET}"

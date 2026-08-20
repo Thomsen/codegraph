@@ -24,7 +24,7 @@ command -v claude >/dev/null || { echo "claude CLI not on PATH"; exit 1; }
 cleanup(){ pkill -9 -f "serve --mcp --path $TGT" 2>/dev/null; }
 trap cleanup EXIT
 mkdir -p "$OUT"
-( cd "$ENGINE" && npm run build >/dev/null 2>&1 ) && echo "built"
+( cd "$ENGINE" && npm run compile >/dev/null 2>&1 ) && echo "built"
 
 # Throwaway copy + fresh index (the agent works here; a read-only question won't
 # edit, but isolate anyway). Excludes the source repo's index/build/vcs.

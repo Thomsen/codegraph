@@ -71,7 +71,7 @@ renders at all. `runPayrollCycleAll`, the hand-written `BuildPayslip` and the re
 ## Running it
 
 ```bash
-npm run build
+npm run compile
 node scripts/agent-eval/probe-allocation.mjs payroll-go   # exits 1 today, by design
 npx vitest run __tests__/explore-allocation-1500.test.ts  # green today, by design
 ```

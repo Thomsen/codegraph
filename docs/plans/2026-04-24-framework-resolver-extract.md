@@ -1020,7 +1020,7 @@ Expected: zero matches. If any remain, delete or rename them.
 
 - [ ] **Step 2: Run the full build and test**
 
-Run: `npm run build && npm test`
+Run: `npm run compile && npm test`
 Expected: Build succeeds; all tests pass.
 
 - [ ] **Step 3: Add a README section**

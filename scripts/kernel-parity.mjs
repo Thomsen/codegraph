@@ -19,7 +19,7 @@
  * the 10% bar calibrated on the 0–0.4% incidence of ts/java/py/go would fail
  * healthy sweeps. A broken walker still trips 0.5 (it defers ~everything).
  *
- * Requires: npm run build (dist/) and a staged kernel (npm run build:kernel).
+ * Requires: npm run compile (dist/) and a staged kernel (npm run build:kernel).
  * Exit code: 0 = parity, 1 = diffs found, 2 = setup error.
  */
 

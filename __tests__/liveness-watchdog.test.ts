@@ -50,7 +50,7 @@ describe('liveness watchdog (spawned, real watchdog process)', () => {
 
   beforeAll(() => {
     if (!fs.existsSync(MODULE)) {
-      throw new Error(`Build the project first: ${MODULE} is missing (run npm run build).`);
+      throw new Error(`Build the project first: ${MODULE} is missing (run npm run compile).`);
     }
   });
 

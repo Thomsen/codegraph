@@ -9,7 +9,7 @@ A language is NOT verified until an LLM can reliably use CodeGraph's MCP tools t
 ### 1. Build and index
 
 ```bash
-npm run build
+npm run compile
 rm -rf <codebase_path>/.codegraph
 node dist/bin/codegraph.js init -iv <codebase_path>
 ```
@@ -468,7 +468,7 @@ test().catch(console.error);
 ## After Fixing Issues
 
 ```bash
-npm run build
+npm run compile
 rm -rf <codebase_path>/.codegraph
 node dist/bin/codegraph.js init -iv <codebase_path>
 # Re-run the failing tests from above

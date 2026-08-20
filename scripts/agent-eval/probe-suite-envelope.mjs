@@ -13,7 +13,7 @@
  * Numbers come from the CG-4 diagnostic (`CODEGRAPH_EXPLORE_DEBUG`), so this
  * measures the shipping allocator rather than re-deriving shares from markdown.
  *
- * Usage (needs a current `npm run build`, and full-REBUILT indexes — CG-33):
+ * Usage (needs a current `npm run compile`, and full-REBUILT indexes — CG-33):
  *   node scripts/agent-eval/probe-suite-envelope.mjs
  *   node scripts/agent-eval/probe-suite-envelope.mjs --json > /tmp/new.json
  *   node scripts/agent-eval/probe-suite-envelope.mjs --baseline /tmp/base.json
@@ -50,7 +50,7 @@ const toolsMod = await load('dist/mcp/tools.js');
 const CodeGraph = idx.default?.default ?? idx.default ?? idx.CodeGraph;
 const ToolHandler = toolsMod.ToolHandler ?? toolsMod.default?.ToolHandler;
 if (typeof CodeGraph?.openSync !== 'function' || typeof ToolHandler !== 'function') {
-  console.error('could not resolve CodeGraph/ToolHandler from dist/ — run `npm run build`');
+  console.error('could not resolve CodeGraph/ToolHandler from dist/ — run `npm run compile`');
   process.exit(2);
 }
 

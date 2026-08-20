@@ -6,7 +6,7 @@
 // the full sweep below runs in ~10-30s vs hours for a real claude audit.
 //
 // Use this to iterate on backend changes rapidly: change tools.ts /
-// context-builder, npm run build, re-run probe-sweep, compare. Once a
+// context-builder, npm run compile, re-run probe-sweep, compare. Once a
 // change looks good on probe metrics, run a focused claude audit for the
 // few repos that matter to confirm end-to-end cost behavior.
 //

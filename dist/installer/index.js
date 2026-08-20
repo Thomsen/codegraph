@@ -128,12 +128,12 @@ async function runInstallerWithOptions(opts) {
             try {
                 // Generous bound (slow networks / cold npm cache) — but bounded, so a
                 // wedged npm can't hang the interactive installer forever (#1139).
-                (0, child_process_1.execSync)('npm install -g @colbymchenry/codegraph', { stdio: 'pipe', windowsHide: true, timeout: 120_000 });
+                (0, child_process_1.execSync)('npm install -g @thomsen/codegraph', { stdio: 'pipe', windowsHide: true, timeout: 120_000 });
                 s.stop('Installed codegraph CLI on PATH');
             }
             catch {
                 s.stop('Could not install (permission denied)');
-                clack.log.warn('Try: sudo npm install -g @colbymchenry/codegraph');
+                clack.log.warn('Try: sudo npm install -g @thomsen/codegraph');
             }
         }
         else {
@@ -485,7 +485,7 @@ async function runUninstaller(opts) {
                     clack.log.success('Removed the npm global package (npm uninstall -g).');
                 }
                 else if (result.npm === 'failed') {
-                    clack.log.warn('npm uninstall failed — run `npm uninstall -g @colbymchenry/codegraph` yourself (EACCES usually means it needs sudo).');
+                    clack.log.warn('npm uninstall failed — run `npm uninstall -g @thomsen/codegraph` yourself (EACCES usually means it needs sudo).');
                 }
                 for (const p of result.leftovers) {
                     clack.log.warn(`Could not remove ${tildify(p)} — delete it manually${process.platform === 'win32' ? ' after this window closes' : ''}.`);
@@ -496,7 +496,7 @@ async function runUninstaller(opts) {
                 }
             }
             else {
-                clack.log.info('Kept the CLI. Remove it later with `codegraph uninstall` or `npm uninstall -g @colbymchenry/codegraph`.');
+                clack.log.info('Kept the CLI. Remove it later with `codegraph uninstall` or `npm uninstall -g @thomsen/codegraph`.');
             }
         }
     }

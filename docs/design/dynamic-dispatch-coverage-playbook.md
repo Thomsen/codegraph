@@ -228,7 +228,7 @@ were found). Confirm it's dynamic by reading the break symbol's body.
 | `scripts/agent-eval/{audit,run-agent,itrun}.sh` | agent A/B (headless + interactive); also the `/agent-eval` skill |
 | `sqlite3 <repo>/.codegraph/codegraph.db` | direct edge/node inspection (provenance, metadata, counts) |
 
-Probe scripts use the built `dist/` — run `npm run build` first. Reindex after any
+Probe scripts use the built `dist/` — run `npm run compile` first. Reindex after any
 extraction or resolution change (`rm -rf <repo>/.codegraph && codegraph init -i`) — the
 synthesizer/resolvers run at index time. Test fixtures: keep a tiny per-pattern fixture
 (see `/tmp/cb-fixture/bus.js`; **move into `__tests__/`** when shipping).

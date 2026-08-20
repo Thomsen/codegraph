@@ -99,7 +99,7 @@ async function loadCodeGraph() {
         console.error(`${red}${(0, glyphs_1.getGlyphs)().err}${reset} Failed to load CodeGraph modules.`);
         console.error(`\n  Node: ${process.version}  Platform: ${process.platform} ${process.arch}`);
         console.error(`\n  Error: ${msg}`);
-        console.error('\n  Try reinstalling with: npm install -g @colbymchenry/codegraph\n');
+        console.error('\n  Try reinstalling with: npm install -g @thomsen/codegraph\n');
         process.exit(1);
     }
 }

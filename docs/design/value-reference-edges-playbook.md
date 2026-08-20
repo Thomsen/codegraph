@@ -270,7 +270,7 @@ reads with no static identifier aren't covered.
 ### 4.1 Deterministic probe (the core — finds FPs)
 
 Index the same repo twice (on vs `CODEGRAPH_VALUE_REFS=0`); node count **must be identical**
-(edges-only feature). Build first: `npm run build`. Save this as `probe.sh`:
+(edges-only feature). Build first: `npm run compile`. Save this as `probe.sh`:
 
 ```bash
 #!/usr/bin/env bash
@@ -433,7 +433,7 @@ come out as something else, adjust the target gate.
 ### D. Wire + sweep
 
 1. Add the language string to `VALUE_REF_LANGS`.
-2. `npm run build`.
+2. `npm run compile`.
 3. Run §4.1 probe on **small / medium / large** public OSS repos (≥3 sizes). Prefer repos
    with real config/constant/lookup-table modules (where the feature shines).
 4. Run §4.2 FP hunts on each. Fix FP clusters (extend a guard); record singletons.

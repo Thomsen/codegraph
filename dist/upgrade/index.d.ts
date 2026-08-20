@@ -8,7 +8,7 @@
  *     canonical installer script (single source of truth) so the download /
  *     version-resolution / PATH logic never drifts between first-install and
  *     upgrade.
- *   - **npm** — installed via `npm i -g @colbymchenry/codegraph`. Upgrading
+ *   - **npm** — installed via `npm i -g @thomsen/codegraph`. Upgrading
  *     shells out to npm.
  *   - **npx** — ephemeral; nothing to upgrade (next `npx` fetches latest).
  *   - **source** — a git checkout running its own `dist/`; `git pull` + rebuild.
@@ -24,7 +24,7 @@
  * conventional Windows self-update dance (rustup/nvm-windows do the same).
  */
 export declare const REPO = "colbymchenry/codegraph";
-export declare const NPM_PACKAGE = "@colbymchenry/codegraph";
+export declare const NPM_PACKAGE = "@thomsen/codegraph";
 export declare const INSTALL_SH_URL = "https://raw.githubusercontent.com/colbymchenry/codegraph/main/install.sh";
 export type InstallMethod = {
     kind: 'bundle';

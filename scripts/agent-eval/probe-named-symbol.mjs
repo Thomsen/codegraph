@@ -16,7 +16,7 @@
  * definition line appear in the rendered source? Nothing else can substitute —
  * not the file being present, not its share, not its byte count.
  *
- * Usage (needs a current `npm run build`):
+ * Usage (needs a current `npm run compile`):
  *   node scripts/agent-eval/probe-named-symbol.mjs
  *   node scripts/agent-eval/probe-named-symbol.mjs --verbose
  *   # any indexed repo, ad hoc:

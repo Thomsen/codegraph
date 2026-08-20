@@ -75,7 +75,7 @@ CHANGED=$(git -C "$ENGINE" diff --name-only "$BASE_REF" HEAD -- src 2>/dev/null)
 cleanup() {
   pkill -9 -f "serve --mcp --path $OUT/" 2>/dev/null
   git -C "$ENGINE" checkout HEAD -- $CHANGED 2>/dev/null
-  ( cd "$ENGINE" && npm run build >/dev/null 2>&1 )
+  ( cd "$ENGINE" && npm run compile >/dev/null 2>&1 )
 }
 # INT/TERM too: killing the script mid-baseline-arm otherwise leaves the engine
 # checked out at the baseline ref, which silently poisons every later build.
@@ -135,7 +135,7 @@ run_arm() { # label, target-copy — runs the task $RUNS times against one build
 }
 
 echo "== NEW build (HEAD) =="
-( cd "$ENGINE" && npm run build >/dev/null 2>&1 ) && echo "  built"
+( cd "$ENGINE" && npm run compile >/dev/null 2>&1 ) && echo "  built"
 node "$BIN" init "$OUT/t-new" >/dev/null 2>&1 && echo "  indexed t-new"
 run_arm new "$OUT/t-new"
 
@@ -146,7 +146,7 @@ echo "== BASELINE build ($BASE_REF) =="
 for f in $CHANGED; do
   git -C "$ENGINE" checkout "$BASE_REF" -- "$f" 2>/dev/null || rm -f "$ENGINE/$f"
 done
-( cd "$ENGINE" && npm run build >/dev/null 2>&1 ) && echo "  built"
+( cd "$ENGINE" && npm run compile >/dev/null 2>&1 ) && echo "  built"
 node "$BIN" init "$OUT/t-base" >/dev/null 2>&1 && echo "  indexed t-base"
 run_arm baseline "$OUT/t-base"
 

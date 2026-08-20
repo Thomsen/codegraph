@@ -124,7 +124,7 @@ be shrunk. `query.py` is the file CLAUDE.md already names as the `_fetch_all` ca
 ## Reproducing
 
 ```bash
-npm run build
+npm run compile
 node scripts/agent-eval/probe-factory-closure.mjs                      # primary query
 node scripts/agent-eval/probe-factory-closure.mjs \
   --target src/stores/alerts-store.ts --factory createAlertsStore \

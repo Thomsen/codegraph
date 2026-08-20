@@ -24,7 +24,7 @@ CHANGED=$(git -C "$ENGINE" diff --name-only "$BASE_REF" HEAD -- src 2>/dev/null)
 cleanup() {
   pkill -9 -f "serve --mcp --path $OUT/" 2>/dev/null
   git -C "$ENGINE" checkout HEAD -- $CHANGED 2>/dev/null
-  ( cd "$ENGINE" && npm run build >/dev/null 2>&1 )
+  ( cd "$ENGINE" && npm run compile >/dev/null 2>&1 )
 }
 trap cleanup EXIT
 mkdir -p "$OUT"
@@ -80,12 +80,12 @@ run_arm() { # label, N
 }
 
 echo "== NEW build (HEAD: codegraph_node has Read parity) =="
-( cd "$ENGINE" && npm run build >/dev/null 2>&1 ) && echo "built"
+( cd "$ENGINE" && npm run compile >/dev/null 2>&1 ) && echo "built"
 run_arm new "$RUNS"
 
 echo "== BASELINE build ($BASE_REF) =="
 git -C "$ENGINE" checkout "$BASE_REF" -- $CHANGED
-( cd "$ENGINE" && npm run build >/dev/null 2>&1 ) && echo "built"
+( cd "$ENGINE" && npm run compile >/dev/null 2>&1 ) && echo "built"
 run_arm baseline "$RUNS"
 
 echo "###### DONE — compare [new] vs [baseline]: does codegraph_node[file] rise / Read fall? Logs: $OUT"

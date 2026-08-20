@@ -283,7 +283,7 @@ They are declared in `scripts/agent-eval/allocation-fixtures.json` and run by
 `scripts/agent-eval/probe-allocation.mjs`, which drives the CG-4 diagnostic through a JSONL
 sidecar (so it measures the shipping allocator, not a re-derivation), groups the rendered
 files into `answer` vs `incidental`, and checks declared share thresholds. Needs a current
-`npm run build`; exits 1 while any assertion fails.
+`npm run compile`; exits 1 while any assertion fails.
 
 ```bash
 node scripts/agent-eval/probe-allocation.mjs                # both

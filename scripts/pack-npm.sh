@@ -5,7 +5,7 @@
 # Produces, under release/npm/:
 #   codegraph-<target>/   one per built bundle — the vendored Node + app, tagged
 #                         with os/cpu so npm installs only the matching one.
-#   main/                 the @colbymchenry/codegraph shim package: a tiny bin
+#   main/                 the @thomsen/codegraph shim package: a tiny bin
 #                         that execs the matching platform bundle, with every
 #                         platform package in optionalDependencies.
 #
@@ -19,7 +19,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 VERSION="${1:-$(node -p "require('$ROOT/package.json').version")}"
-SCOPE="@colbymchenry"
+SCOPE="@thomsen"
 REL="$ROOT/release"
 NPM="$REL/npm"
 
@@ -86,7 +86,7 @@ cp "$ROOT/scripts/npm-sdk.js" "$NPM/main/npm-sdk.js"
 
 # Ship the type declarations so `types`/`exports.types` resolve. Built from this
 # same release, so they can't skew from the runtime npm-sdk.js re-exports.
-[ -f "$ROOT/dist/index.d.ts" ] || ( echo "[pack-npm] building dist for .d.ts" >&2 && cd "$ROOT" && npm run build >/dev/null )
+[ -f "$ROOT/dist/index.d.ts" ] || ( echo "[pack-npm] building dist for .d.ts" >&2 && cd "$ROOT" && npm run compile >/dev/null )
 ROOT="$ROOT" DEST="$NPM/main" node -e '
   const fs=require("fs"), path=require("path");
   const src=path.join(process.env.ROOT,"dist"), dest=path.join(process.env.DEST,"dist");

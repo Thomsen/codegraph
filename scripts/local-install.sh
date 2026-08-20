@@ -25,7 +25,7 @@ if [ "${1:-}" = "--undo" ]; then
 fi
 
 echo "→ building ${PKG} ${VERSION} (${BRANCH})"
-npm run build
+npm run compile
 
 echo "→ linking globally"
 npm link

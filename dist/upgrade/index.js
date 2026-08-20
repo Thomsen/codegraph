@@ -9,7 +9,7 @@
  *     canonical installer script (single source of truth) so the download /
  *     version-resolution / PATH logic never drifts between first-install and
  *     upgrade.
- *   - **npm** — installed via `npm i -g @colbymchenry/codegraph`. Upgrading
+ *   - **npm** — installed via `npm i -g @thomsen/codegraph`. Upgrading
  *     shells out to npm.
  *   - **npx** — ephemeral; nothing to upgrade (next `npx` fetches latest).
  *   - **source** — a git checkout running its own `dist/`; `git pull` + rebuild.
@@ -82,7 +82,7 @@ const https = __importStar(require("https"));
 const child_process_1 = require("child_process");
 const color_1 = require("../ui/color");
 exports.REPO = 'colbymchenry/codegraph';
-exports.NPM_PACKAGE = '@colbymchenry/codegraph';
+exports.NPM_PACKAGE = '@thomsen/codegraph';
 const RAW_BASE = `https://raw.githubusercontent.com/${exports.REPO}/main`;
 exports.INSTALL_SH_URL = `${RAW_BASE}/install.sh`;
 function toPosix(p) {
@@ -125,7 +125,7 @@ function detectInstallMethod(input) {
     const binDir = P.dirname(input.filename); // <…>/bin
     const norm = toPosix(input.filename);
     // Path-based checks come FIRST. The npm thin-installer's per-platform
-    // package (@colbymchenry/codegraph-<platform>-<arch>) is itself a complete
+    // package (@thomsen/codegraph-<platform>-<arch>) is itself a complete
     // bundle — vendored node + bin/ launcher — living inside node_modules, so
     // the layout sniff below would misread every npm install as a standalone
     // bundle. `upgrade` would then curl install.sh into ~/.codegraph: a SECOND
@@ -133,7 +133,7 @@ function detectInstallMethod(input) {
     // `codegraph -v` permanently on the old version (the #1071 shadow,
     // self-inflicted). A path under node_modules is authoritative about HOW the
     // user installed, whatever the artifact inside looks like.
-    // npx cache: <…>/_npx/<hash>/node_modules/@colbymchenry/codegraph/…
+    // npx cache: <…>/_npx/<hash>/node_modules/@thomsen/codegraph/…
     // (checked before npm — the npx cache path also contains /node_modules/).
     if (norm.includes('/_npx/')) {
         return { kind: 'npx' };
@@ -338,7 +338,7 @@ async function runUpgrade(opts, deps) {
             return 0;
         case 'source':
             deps.warn(`Running from a source checkout at ${method.root}.`);
-            deps.log(c.dim('Upgrade it with: git pull && npm run build'));
+            deps.log(c.dim('Upgrade it with: git pull && npm run compile'));
             return 0;
         default:
             deps.error(`Couldn’t determine how CodeGraph was installed (${method.reason}).`);

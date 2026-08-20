@@ -33,7 +33,7 @@ Verified ground-truth flows (the judge's reference) live in `offload-eval-ground
 ## Run it
 
 ```bash
-npm run build                       # the harness shells out to dist/
+npm run compile                       # the harness shells out to dist/
 codegraph login                     # only needed for the offload arm
 export AGENT_EVAL_OUT=/tmp/cg-offload-eval
 

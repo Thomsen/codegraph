@@ -16,7 +16,7 @@ name: Release
 # `## [Unreleased]` — step 2 takes care of moving them.
 #
 # npm auth is OIDC trusted publishing (no NPM_TOKEN): every published package
-# (@colbymchenry/codegraph + the per-platform bundles) has this repo +
+# (@thomsen/codegraph + the per-platform bundles) has this repo +
 # release.yml configured as its trusted publisher on npmjs.com. Adding a new
 # platform package means configuring its trusted publisher there before the
 # first release that includes it.

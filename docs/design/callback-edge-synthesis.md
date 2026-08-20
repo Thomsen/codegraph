@@ -35,7 +35,7 @@ We synthesize `dispatcher → callback` edges that static parsing misses. It wor
 
 **How to reproduce / test:**
 ```bash
-npm run build
+npm run compile
 rm -rf /tmp/codegraph-corpus/excalidraw/.codegraph
 ( cd /tmp/codegraph-corpus/excalidraw && codegraph init -i )
 # synthesized edges (provenance='heuristic', metadata.synthesizedBy in {callback,event-emitter}):

@@ -197,7 +197,7 @@ and has the current build deployed at `/app` (tree at `/work/linux`).
   `CODEGRAPH_KERNEL_EXPECT=1`.
 
 **Build/run:** `npm run build:kernel` (needs rustup; stages
-`codegraph-kernel/prebuilds/<plat>-<arch>/codegraph-kernel.node`) → `npm run build`
+`codegraph-kernel/prebuilds/<plat>-<arch>/codegraph-kernel.node`) → `npm run compile`
 → `npm test`. Parity sweep: `node scripts/kernel-parity.mjs <dir>`. Dump gate:
 init twice (kernel arm vs `CODEGRAPH_KERNEL=0`), `dump-graph.mjs` each, `cmp`.
 

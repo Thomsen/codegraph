@@ -142,7 +142,7 @@ the defect is real but rare, and the mechanism costs nothing where it does not a
 ## Reproducing
 
 ```bash
-npm run build
+npm run compile
 node scripts/agent-eval/probe-decl-only.mjs                        # as committed
 node scripts/agent-eval/probe-decl-only.mjs --variant strip-banner # what CG-25 is worth
 npx vitest run __tests__/explore-declaration-only.test.ts          # the standing gate
