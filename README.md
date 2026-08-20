@@ -102,7 +102,7 @@ npm i -g @colbymchenry/codegraph
 Install this fork directly from GitHub when using Stepby rooted Worksets:
 
 ```bash
-npm install -g github:Thomsen/codegraph
+npm install -g github:Thomsen/codegraph#dev
 ```
 
 The fork adds a version 1 manifest at `<root>/.codegraph/workspace.json`. Source
