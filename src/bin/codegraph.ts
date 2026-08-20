@@ -53,6 +53,7 @@ import { relaunchWithWasmRuntimeFlagsIfNeeded } from '../extraction/wasm-runtime
 import { installCommandSupervision } from './command-supervision';
 import { EXTRACTION_VERSION } from '../extraction/extraction-version';
 import { getTelemetry, TELEMETRY_DOCS, recordIndexEvent } from '../telemetry';
+import { WORKSPACE_PROTOCOL_VERSION } from '../workspace';
 
 // Decided once, before `--color`/`--no-color` are stripped from argv below
 // (#1281). Piped/redirected stdout, NO_COLOR, or --no-color -> plain output.
@@ -598,7 +599,7 @@ workspace
   .description('Report the rooted workspace protocol supported by this binary')
   .option('--json', 'Output machine-readable JSON')
   .action((options: { json?: boolean }) => {
-    const output = { protocolVersion: 1 };
+    const output = { protocolVersion: WORKSPACE_PROTOCOL_VERSION };
     if (options.json) console.log(JSON.stringify(output));
     else console.log(`CodeGraph workspace protocol version ${output.protocolVersion}`);
   });
@@ -628,7 +629,7 @@ workspace
       else success(`Initialized CodeGraph workspace "${manifest.workset}" with ${manifest.members.length} member(s).`);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      if (options.json) console.log(JSON.stringify({ protocolVersion: 1, initialized: false, root, error: message }));
+      if (options.json) console.log(JSON.stringify({ protocolVersion: WORKSPACE_PROTOCOL_VERSION, initialized: false, root, error: message }));
       else error(`Failed to initialize workspace: ${message}`);
       process.exitCode = 1;
     }
@@ -663,8 +664,53 @@ workspace
       else console.log(`CodeGraph workspace "${manifest.workset}": ${initialized ? 'initialized' : 'not initialized'}`);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      if (options.json) console.log(JSON.stringify({ protocolVersion: 1, initialized: false, root, error: message }));
+      if (options.json) console.log(JSON.stringify({ protocolVersion: WORKSPACE_PROTOCOL_VERSION, initialized: false, root, error: message }));
       else error(`Failed to read workspace status: ${message}`);
+      process.exitCode = 1;
+    }
+  });
+
+workspace
+  .command('sync')
+  .description('Incrementally synchronize every rooted workspace member')
+  .requiredOption('--root <path>', 'Workspace root containing .codegraph/workspace.json')
+  .option('--json', 'Output machine-readable JSON')
+  .action(async (options: { root: string; json?: boolean }) => {
+    let root = path.resolve(options.root);
+    try {
+      root = fs.realpathSync(root);
+      const { default: CodeGraph, loadWorkspaceManifest } = await loadCodeGraph();
+      const manifest = loadWorkspaceManifest(root);
+      const cg = await CodeGraph.open(root);
+      try {
+        const result = await cg.syncWorkspace();
+        const output = {
+          protocolVersion: WORKSPACE_PROTOCOL_VERSION,
+          synchronized: true,
+          root,
+          workset: manifest.workset,
+          members: manifest.members.map((member) => member.name),
+          ...result,
+        };
+        if (options.json) console.log(JSON.stringify(output));
+        else {
+          const changed = result.filesAdded + result.filesModified + result.filesRemoved;
+          if (changed === 0) info(`CodeGraph workspace "${manifest.workset}" is already up to date.`);
+          else success(`Synchronized ${changed} changed file(s) in CodeGraph workspace "${manifest.workset}".`);
+        }
+      } finally {
+        cg.close();
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (options.json) {
+        console.log(JSON.stringify({
+          protocolVersion: WORKSPACE_PROTOCOL_VERSION,
+          synchronized: false,
+          root,
+          error: message,
+        }));
+      } else error(`Failed to synchronize workspace: ${message}`);
       process.exitCode = 1;
     }
   });
@@ -688,7 +734,7 @@ workspace
       else success(`Replaced CodeGraph workspace member "${member}" with ${replaced?.path}.`);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      if (options.json) console.log(JSON.stringify({ protocolVersion: 1, replaced: false, root, member, error: message }));
+      if (options.json) console.log(JSON.stringify({ protocolVersion: WORKSPACE_PROTOCOL_VERSION, replaced: false, root, member, error: message }));
       else error(`Failed to replace workspace member: ${message}`);
       process.exitCode = 1;
     }

@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.WorkspaceRootAmbiguityError = exports.WORKSPACE_MANIFEST_PATH = exports.WORKSPACE_PROTOCOL_VERSION = void 0;
+exports.WorkspaceRootAmbiguityError = exports.WORKSPACE_MANIFEST_PATH = exports.WORKSPACE_MANIFEST_VERSION = exports.WORKSPACE_PROTOCOL_VERSION = void 0;
 exports.discoverCodeGraphRoot = discoverCodeGraphRoot;
 exports.writeWorkspaceManifest = writeWorkspaceManifest;
 exports.loadWorkspaceManifest = loadWorkspaceManifest;
@@ -41,7 +41,8 @@ exports.createWorkspaceResolution = createWorkspaceResolution;
 const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
 const directory_1 = require("./directory");
-exports.WORKSPACE_PROTOCOL_VERSION = 1;
+exports.WORKSPACE_PROTOCOL_VERSION = 2;
+exports.WORKSPACE_MANIFEST_VERSION = 1;
 exports.WORKSPACE_MANIFEST_PATH = path.join('.codegraph', 'workspace.json');
 class WorkspaceRootAmbiguityError extends Error {
     candidates;
@@ -108,8 +109,8 @@ function loadWorkspaceManifest(root) {
         throw new Error('Invalid CodeGraph workspace manifest: expected an object');
     }
     const record = parsed;
-    if (record.version !== exports.WORKSPACE_PROTOCOL_VERSION) {
-        throw new Error(`Unsupported CodeGraph workspace protocol version: ${String(record.version)}`);
+    if (record.version !== exports.WORKSPACE_MANIFEST_VERSION) {
+        throw new Error(`Unsupported CodeGraph workspace manifest version: ${String(record.version)}`);
     }
     if (!Array.isArray(record.members) || record.members.length === 0) {
         throw new Error('Invalid CodeGraph workspace manifest: members must be a non-empty array');
@@ -139,7 +140,7 @@ function loadWorkspaceManifest(root) {
         return { name, path: canonicalPath };
     });
     return {
-        version: exports.WORKSPACE_PROTOCOL_VERSION,
+        version: exports.WORKSPACE_MANIFEST_VERSION,
         workset: requireString(record.workset, 'workset'),
         members,
     };

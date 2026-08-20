@@ -1,4 +1,5 @@
-export declare const WORKSPACE_PROTOCOL_VERSION = 1;
+export declare const WORKSPACE_PROTOCOL_VERSION = 2;
+export declare const WORKSPACE_MANIFEST_VERSION = 1;
 export declare const WORKSPACE_MANIFEST_PATH: string;
 export interface WorkspaceMember {
     name: string;

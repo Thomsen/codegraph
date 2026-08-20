@@ -105,15 +105,21 @@ Install this fork directly from GitHub when using Stepby rooted Worksets:
 npm install -g github:Thomsen/codegraph#dev
 ```
 
-The fork adds a version 1 manifest at `<root>/.codegraph/workspace.json`. Source
-members may live anywhere and are indexed into one database using stable
-`<member-name>/<relative-path>` identities. Initialize and inspect that graph
-with structured output:
+The fork exposes workspace CLI protocol version 2 while retaining the version 1
+manifest at `<root>/.codegraph/workspace.json`. Source members may live anywhere
+and are indexed into one database using stable `<member-name>/<relative-path>`
+identities. Initialize, inspect, and manually synchronize that graph with
+structured output:
 
 ```bash
 codegraph workspace init --root /path/to/workset-root --json
 codegraph workspace status --root /path/to/workset-root --json
+codegraph workspace sync --root /path/to/workset-root --json
 ```
+
+`workspace sync` incrementally applies files added, modified, or removed across
+all manifest members and reports aggregate statistics. The watcher and MCP
+server also keep the graph fresh during long-running sessions.
 
 Run agents and the MCP server from the Workset root to reopen the same graph
 without repeating the root flag. MCP discovery prefers an explicit server root,

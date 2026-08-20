@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { execFileSync } from 'child_process';
+import { execFileSync, spawnSync } from 'child_process';
 import { CodeGraph, discoverCodeGraphRoot } from '../src';
 import { __emitWatchEventForTests } from '../src/sync/watcher';
 import { ToolHandler } from '../src/mcp/tools';
@@ -94,22 +94,92 @@ describe('multi-root workspace indexing', () => {
       return JSON.parse(stdout.trim());
     };
 
-    expect(run('workspace', 'protocol', '--json')).toEqual({ protocolVersion: 1 });
+    expect(run('workspace', 'protocol', '--json')).toEqual({ protocolVersion: 2 });
 
     expect(run('workspace', 'init', '--root', root, '--json')).toMatchObject({
-      protocolVersion: 1,
+      protocolVersion: 2,
       initialized: true,
       root: canonicalRoot,
       workset: 'demo',
       members: ['a', 'b'],
     });
     expect(run('workspace', 'status', '--root', root, '--json')).toMatchObject({
-      protocolVersion: 1,
+      protocolVersion: 2,
       initialized: true,
       root: canonicalRoot,
       workset: 'demo',
       members: ['a', 'b'],
       indexPath: path.join(canonicalRoot, '.codegraph', 'codegraph.db'),
+    });
+  });
+
+  it('synchronizes added, modified, and removed files through the workspace CLI', () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'codegraph-workspace-cli-sync-'));
+    tempDirs.push(tempDir);
+    const root = path.join(tempDir, 'root');
+    const memberA = path.join(tempDir, 'repo-a');
+    const memberB = path.join(tempDir, 'repo-b');
+    fs.mkdirSync(path.join(root, '.codegraph'), { recursive: true });
+    fs.mkdirSync(memberA, { recursive: true });
+    fs.mkdirSync(memberB, { recursive: true });
+    fs.writeFileSync(path.join(memberA, 'index.ts'), 'export function fromA() { return "a"; }\n');
+    fs.writeFileSync(path.join(memberB, 'index.ts'), 'export function fromB() { return "b"; }\n');
+    fs.writeFileSync(
+      path.join(root, '.codegraph', 'workspace.json'),
+      JSON.stringify({
+        version: 1,
+        workset: 'sync-cli',
+        members: [
+          { name: 'a', path: memberA },
+          { name: 'b', path: memberB },
+        ],
+      })
+    );
+
+    const run = (...args: string[]): Record<string, any> => {
+      const stdout = execFileSync(process.execPath, [BIN, ...args], {
+        cwd: root,
+        encoding: 'utf-8',
+        env: { ...process.env, CODEGRAPH_NO_DAEMON: '1' },
+      });
+      return JSON.parse(stdout.trim());
+    };
+
+    run('workspace', 'init', '--root', root, '--json');
+    fs.writeFileSync(path.join(memberA, 'index.ts'), 'export function changedA() { return "changed"; }\n');
+    fs.writeFileSync(path.join(memberA, 'added.ts'), 'export const added = true;\n');
+    fs.unlinkSync(path.join(memberB, 'index.ts'));
+
+    expect(run('workspace', 'sync', '--root', root, '--json')).toMatchObject({
+      protocolVersion: 2,
+      synchronized: true,
+      root: fs.realpathSync(root),
+      workset: 'sync-cli',
+      members: ['a', 'b'],
+      filesAdded: 1,
+      filesModified: 1,
+      filesRemoved: 1,
+    });
+    expect(run('workspace', 'sync', '--root', root, '--json')).toMatchObject({
+      protocolVersion: 2,
+      synchronized: true,
+      filesAdded: 0,
+      filesModified: 0,
+      filesRemoved: 0,
+    });
+  });
+
+  it('reports a structured workspace sync error for an invalid root', () => {
+    const missing = path.join(os.tmpdir(), `codegraph-missing-workspace-${Date.now()}`);
+    const result = spawnSync(process.execPath, [
+      BIN, 'workspace', 'sync', '--root', missing, '--json',
+    ], { encoding: 'utf-8', env: { ...process.env, CODEGRAPH_NO_DAEMON: '1' } });
+
+    expect(result.status).not.toBe(0);
+    expect(JSON.parse(result.stdout.trim())).toMatchObject({
+      protocolVersion: 2,
+      synchronized: false,
+      root: path.resolve(missing),
     });
   });
 

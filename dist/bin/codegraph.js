@@ -85,6 +85,7 @@ const wasm_runtime_flags_1 = require("../extraction/wasm-runtime-flags");
 const command_supervision_1 = require("./command-supervision");
 const extraction_version_1 = require("../extraction/extraction-version");
 const telemetry_1 = require("../telemetry");
+const workspace_1 = require("../workspace");
 // Decided once, before `--color`/`--no-color` are stripped from argv below
 // (#1281). Piped/redirected stdout, NO_COLOR, or --no-color -> plain output.
 const COLORS_ENABLED = (0, color_1.ansiColorsEnabled)();
@@ -557,7 +558,7 @@ function main() {
         .description('Report the rooted workspace protocol supported by this binary')
         .option('--json', 'Output machine-readable JSON')
         .action((options) => {
-        const output = { protocolVersion: 1 };
+        const output = { protocolVersion: workspace_1.WORKSPACE_PROTOCOL_VERSION };
         if (options.json)
             console.log(JSON.stringify(output));
         else
@@ -592,7 +593,7 @@ function main() {
         catch (err) {
             const message = err instanceof Error ? err.message : String(err);
             if (options.json)
-                console.log(JSON.stringify({ protocolVersion: 1, initialized: false, root, error: message }));
+                console.log(JSON.stringify({ protocolVersion: workspace_1.WORKSPACE_PROTOCOL_VERSION, initialized: false, root, error: message }));
             else
                 error(`Failed to initialize workspace: ${message}`);
             process.exitCode = 1;
@@ -631,9 +632,60 @@ function main() {
         catch (err) {
             const message = err instanceof Error ? err.message : String(err);
             if (options.json)
-                console.log(JSON.stringify({ protocolVersion: 1, initialized: false, root, error: message }));
+                console.log(JSON.stringify({ protocolVersion: workspace_1.WORKSPACE_PROTOCOL_VERSION, initialized: false, root, error: message }));
             else
                 error(`Failed to read workspace status: ${message}`);
+            process.exitCode = 1;
+        }
+    });
+    workspace
+        .command('sync')
+        .description('Incrementally synchronize every rooted workspace member')
+        .requiredOption('--root <path>', 'Workspace root containing .codegraph/workspace.json')
+        .option('--json', 'Output machine-readable JSON')
+        .action(async (options) => {
+        let root = path.resolve(options.root);
+        try {
+            root = fs.realpathSync(root);
+            const { default: CodeGraph, loadWorkspaceManifest } = await loadCodeGraph();
+            const manifest = loadWorkspaceManifest(root);
+            const cg = await CodeGraph.open(root);
+            try {
+                const result = await cg.syncWorkspace();
+                const output = {
+                    protocolVersion: workspace_1.WORKSPACE_PROTOCOL_VERSION,
+                    synchronized: true,
+                    root,
+                    workset: manifest.workset,
+                    members: manifest.members.map((member) => member.name),
+                    ...result,
+                };
+                if (options.json)
+                    console.log(JSON.stringify(output));
+                else {
+                    const changed = result.filesAdded + result.filesModified + result.filesRemoved;
+                    if (changed === 0)
+                        info(`CodeGraph workspace "${manifest.workset}" is already up to date.`);
+                    else
+                        success(`Synchronized ${changed} changed file(s) in CodeGraph workspace "${manifest.workset}".`);
+                }
+            }
+            finally {
+                cg.close();
+            }
+        }
+        catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            if (options.json) {
+                console.log(JSON.stringify({
+                    protocolVersion: workspace_1.WORKSPACE_PROTOCOL_VERSION,
+                    synchronized: false,
+                    root,
+                    error: message,
+                }));
+            }
+            else
+                error(`Failed to synchronize workspace: ${message}`);
             process.exitCode = 1;
         }
     });
@@ -660,7 +712,7 @@ function main() {
         catch (err) {
             const message = err instanceof Error ? err.message : String(err);
             if (options.json)
-                console.log(JSON.stringify({ protocolVersion: 1, replaced: false, root, member, error: message }));
+                console.log(JSON.stringify({ protocolVersion: workspace_1.WORKSPACE_PROTOCOL_VERSION, replaced: false, root, member, error: message }));
             else
                 error(`Failed to replace workspace member: ${message}`);
             process.exitCode = 1;

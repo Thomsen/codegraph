@@ -2,7 +2,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { findNearestCodeGraphRoot } from './directory';
 
-export const WORKSPACE_PROTOCOL_VERSION = 1;
+export const WORKSPACE_PROTOCOL_VERSION = 2;
+export const WORKSPACE_MANIFEST_VERSION = 1;
 export const WORKSPACE_MANIFEST_PATH = path.join('.codegraph', 'workspace.json');
 
 export interface WorkspaceMember {
@@ -91,8 +92,8 @@ export function loadWorkspaceManifest(root: string): WorkspaceManifest {
     throw new Error('Invalid CodeGraph workspace manifest: expected an object');
   }
   const record = parsed as Record<string, unknown>;
-  if (record.version !== WORKSPACE_PROTOCOL_VERSION) {
-    throw new Error(`Unsupported CodeGraph workspace protocol version: ${String(record.version)}`);
+  if (record.version !== WORKSPACE_MANIFEST_VERSION) {
+    throw new Error(`Unsupported CodeGraph workspace manifest version: ${String(record.version)}`);
   }
   if (!Array.isArray(record.members) || record.members.length === 0) {
     throw new Error('Invalid CodeGraph workspace manifest: members must be a non-empty array');
@@ -122,7 +123,7 @@ export function loadWorkspaceManifest(root: string): WorkspaceManifest {
   });
 
   return {
-    version: WORKSPACE_PROTOCOL_VERSION,
+    version: WORKSPACE_MANIFEST_VERSION,
     workset: requireString(record.workset, 'workset'),
     members,
   };
